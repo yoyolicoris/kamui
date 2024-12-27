@@ -21,7 +21,7 @@ $`A_{ij} \in \{-1, 0, 1\} | i \in [0, N) \cap j \in [0, M)`$ and $N$ is the numb
 This formulation is based on the fact that the true phase differences, $2\pi k + x$, should fulfill the irrotationality constraint, which means the summation of phase derivatives of each elementary cycles is zero.
 This is the general form of the network programming approach proposed in the paper "[A novel phase unwrapping method based on network programming](https://ieeexplore.ieee.org/document/673674)".
 
-Unwrapping phase with Kamui can be computationally heavy due to the fact that ILP is NP-hard.
+Unwrapping phase with Kamui can be computationally heavy.
 Acceleration techniques, such as dividing the graph into subgraphs, will be implemented in the future.
 
 ## Installation
