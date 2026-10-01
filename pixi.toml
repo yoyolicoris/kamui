@@ -1,0 +1,62 @@
+[workspace]
+name = "kamui"
+description = "Robust and accurate phase unwrapping on 2-D, 3-D, or sparse data"
+authors = ["Chin-Yun Yu <chin-yun.yu@qmul.ac.uk>"]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[dependencies]
+python = ">=3.10,<3.14"
+pip = "*"
+numpy = ">=2"
+scipy = "*"
+
+[pypi-dependencies]
+kamui = { path = ".", editable = true }
+
+# Split from `dev` so the per-Python environments below can carry the test
+# runner without the tooling: numpydoc >=1.11 requires Python >=3.11, which
+# would make a 3.10 environment unsolvable.
+[feature.test.dependencies]
+pytest = "*"
+pytest-cov = ">=7.1.0, <8"
+
+# PyMaxflow is on conda-forge but has no osx-arm64 build, so it comes from
+# PyPI (wheels exist for every platform and Python here); this keeps the
+# PUMA graph-cut solver exercised in CI.
+[feature.test.pypi-dependencies]
+PyMaxflow = "*"
+
+[feature.dev.dependencies]
+ruff = "*"
+python-build = "*"
+numpydoc = ">=1.11.0,<2"
+
+# One feature per supported interpreter, so CI can run the suite across the
+# whole `requires-python` range instead of whatever the solver happens to pick.
+[feature.py310.dependencies]
+python = "3.10.*"
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"
+
+[environments]
+default = ["test", "dev"]
+py310 = ["py310", "test"]
+py311 = ["py311", "test"]
+py312 = ["py312", "test"]
+py313 = ["py313", "test"]
+
+[tasks]
+test = { cmd = "pytest -v --cov --cov-branch --cov-report=xml", description = "Run the test suite and write coverage.xml" }
+lint = { cmd = "ruff check kamui tests", description = "Lint with ruff" }
+docstrings = { cmd = "python -m numpydoc lint kamui/*.py", description = "Validate public docstrings against numpydoc" }
+format = { cmd = "ruff format kamui tests", description = "Format with ruff" }
+build = { cmd = "python -m build", description = "Build sdist and wheel" }
+smoke = { cmd = "python scripts/smoke_wheel.py", description = "Install the built wheel in a clean venv and check its version wiring" }

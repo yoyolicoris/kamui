@@ -1,0 +1,57 @@
+# conda-forge recipe for kamui.
+#
+# This is the recipe to submit when ready; it is NOT submitted yet.
+# Submission path (needs explicit approval for each public step):
+#   1. kamui is already on PyPI, so this step is done.
+#   2. Fill in the real sha256 below from the PyPI sdist file page.
+#   3. Add your GitHub username(s) under recipe-maintainers.
+#   4. Open a PR against conda-forge/staged-recipes with this file as
+#      recipe/meta.yaml. Merging creates the kamui-feedstock repo.
+#   5. After that, the conda-forge autotick bot opens version-bump PRs
+#      automatically on every PyPI release, with no manual work per release.
+#
+# The version below is the one place a version number is written by hand, and
+# only until submission: set it to the git tag being released, then the
+# conda-forge autotick bot maintains it in the feedstock. Everywhere else the
+# version comes from the git tag via hatch-vcs.
+
+{% set name = "kamui" %}
+{% set version = "0.2.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  # !!! Replace with the real sha256 from the PyPI sdist file page !!!
+  sha256: 0000000000000000000000000000000000000000000000000000000000000000
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  number: 0
+
+requirements:
+  host:
+    - python >=3.10
+    - pip
+    - hatchling
+  run:
+    - python >=3.10
+    - numpy >=2
+    - scipy >=1.13
+
+test:
+  imports:
+    - kamui
+
+about:
+  home: https://github.com/yoyolicoris/kamui
+  license: MIT
+  license_file: LICENSE
+  summary: Robust and accurate phase unwrapping on 2-D, 3-D, or sparse data
+
+extra:
+  recipe-maintainers:
+    - yoyolicoris

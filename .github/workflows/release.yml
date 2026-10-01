@@ -1,0 +1,39 @@
+name: Release
+
+# Publish to PyPI on version tags, e.g. v0.3.0.
+# The tag IS the version: hatch-vcs derives it from `git describe`, so nothing
+# in the repo declares one. fetch-depth: 0 below is required: a shallow
+# checkout has no tags and would publish a 0.0.0 release, which `pixi run smoke`
+# below is there to catch before anything reaches PyPI.
+# kamui is already on PyPI, so this is not a first release: add this repo as a
+# trusted publisher on the EXISTING project at
+# https://pypi.org/manage/project/kamui/settings/publishing/ (not a pending
+# publisher) before pushing the tag.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # hatch-vcs derives the version from git tags
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: latest
+          # fail if pixi.lock is out of sync with pixi.toml
+          locked: true
+      - run: pixi run lint
+      - run: pixi run docstrings
+      - run: pixi run test
+      - run: pixi run build
+      - name: install the wheel and check the resolved version
+        run: pixi run smoke
+      - uses: pypa/gh-action-pypi-publish@release/v1

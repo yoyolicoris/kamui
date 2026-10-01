@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kamui"
+dynamic = ["version"]
+description = "Robust and accurate phase unwrapping on 2-D, 3-D, or sparse data"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Chin-Yun Yu", email = "chin-yun.yu@qmul.ac.uk" },
+]
+maintainers = [{ name = "Chin-Yun Yu", email = "chin-yun.yu@qmul.ac.uk" }]
+keywords = ["phase-unwrapping", "interferometry", "network-flow", "graph-cuts"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+# Floors are the oldest releases that work with NumPy 2, which the repo just
+# landed compatibility for (#16): SciPy 1.13 is the first release that allows
+# NumPy 2 while still shipping linprog(..., integrality=1); HiGHS MILP itself
+# arrived back in SciPy 1.9, but 1.9 through 1.12 cap numpy below 2.
+dependencies = ["numpy>=2", "scipy>=1.13"]
+
+[project.optional-dependencies]
+# Keep the existing extra name: the README documents `pip install kamui[extra]`.
+extra = ["PyMaxflow"]
+
+[project.urls]
+Homepage = "https://github.com/yoyolicoris/kamui"
+Repository = "https://github.com/yoyolicoris/kamui"
+
+# The git tag is the single source of truth for the installed version:
+# `git tag v0.3.0`, and hatch-vcs derives it at build time. conda-recipe/
+# meta.yaml carries the only hand-written version, and only until submission.
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kamui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# `pixi run test` passes a bare `--cov`, so the scope lives here. Without the
+# omit, pytest-cov also measures `tests/` and reports the suite's own coverage
+# to Codecov. Do not set `source` instead: it rewrites the XML filenames to
+# bare basenames under a `kamui` prefix, and Codecov then fails to match them
+# against the repo. relative_files keeps paths checkout-independent so the
+# Linux, macOS and Windows legs all report identical filenames.
+[tool.coverage.run]
+omit = ["tests/*"]
+relative_files = true
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["D", "E", "F", "W", "I", "UP"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+# Test functions are named to describe themselves; docstrings would restate them.
+"tests/*" = ["D"]
+
+# Public API only: private helpers carry a one-line summary by design.
+# EX01/SA01/ES01 are optional numpydoc sections this package does not use.
+[tool.numpydoc_validation]
+checks = ["all", "EX01", "SA01", "ES01"]
+exclude = ['(^|\.)_[^_]']
