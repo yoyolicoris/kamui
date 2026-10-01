@@ -7,7 +7,7 @@ on:
 
 jobs:
   lint:
-    name: lint and docstrings
+    name: lint, format and docstrings
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -20,6 +20,7 @@ jobs:
           # fail if pixi.lock is out of sync with pixi.toml
           locked: true
       - run: pixi run lint
+      - run: pixi run format-check
       - run: pixi run docstrings
 
   test:
@@ -28,7 +29,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        env: [py310, py311, py312, py313]
+        env: [py310, py311, py312, py313, py314]
         # Only this leg uploads coverage. Marked via `include` rather than an
         # `if` on matrix values: if py313 is dropped above, include re-adds it
         # as a leg that fails loudly instead of silently never matching.

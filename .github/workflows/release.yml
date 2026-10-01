@@ -32,6 +32,7 @@ jobs:
           # fail if pixi.lock is out of sync with pixi.toml
           locked: true
       - run: pixi run lint
+      - run: pixi run format-check
       - run: pixi run docstrings
       - run: pixi run test
       - run: pixi run build
