@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+
+jobs:
+  lint:
+    name: lint, format and docstrings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # hatch-vcs derives the version from git tags
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: latest
+          # fail if pixi.lock is out of sync with pixi.toml
+          locked: true
+      - run: pixi run lint
+      - run: pixi run format-check
+      - run: pixi run docstrings
+
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.env }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        env: [py310, py311, py312, py313, py314]
+        # Only this leg uploads coverage. Marked via `include` rather than an
+        # `if` on matrix values: if py313 is dropped above, include re-adds it
+        # as a leg that fails loudly instead of silently never matching.
+        include:
+          - os: ubuntu-latest
+            env: py313
+            coverage: true
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: latest
+          environments: ${{ matrix.env }}
+          locked: true
+      - run: pixi run -e ${{ matrix.env }} test
+      - name: Upload coverage reports to Codecov
+        if: matrix.coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # name the file rather than letting the action search: a missing
+          # coverage.xml then fails the job instead of uploading nothing
+          files: coverage.xml
+          fail_ci_if_error: true
+
+  build:
+    name: build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: latest
+          locked: true
+      - run: pixi run build
+      - name: install the wheel and check the resolved version
+        run: pixi run smoke
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/

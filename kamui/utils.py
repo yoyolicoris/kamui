@@ -1,6 +1,15 @@
+"""Graph construction and weight preparation for phase unwrapping.
+
+:func:`get_2d_edges_and_simplices` and :func:`get_3d_edges_and_simplices`
+build the edge list and elementary 4-cycles of a regular grid (with
+optional cyclical axes); :func:`prepare_weights` turns per-vertex quality
+weights into per-edge weights.
+"""
+
+from collections.abc import Iterable
+
 import numpy as np
 import numpy.typing as npt
-from typing import Tuple, Iterable, Union
 
 __all__ = [
     "get_2d_edges_and_simplices",
@@ -10,28 +19,29 @@ __all__ = [
 
 
 def get_2d_edges_and_simplices(
-    shape: Tuple[int, int], cyclical_axis: Union[int, Tuple[int, int]] = ()
-) -> Tuple[np.ndarray, Iterable[Iterable[int]]]:
-    """
-    Compute the edges and simplices for a 2D grid.
+    shape: tuple[int, int], cyclical_axis: int | tuple[int, ...] = ()
+) -> tuple[np.ndarray, Iterable[Iterable[int]]]:
+    """Compute the edges and simplices for a 2-D grid.
 
     Parameters
     ----------
-    shape : Tuple[int, int]
+    shape : tuple of int
         The shape of the grid.
-    cyclical_axis : Union[int, Tuple[int, int]], optional
-        The axis/axes that should be treated as cyclical. Defaults to ().
+    cyclical_axis : int or tuple of int, optional
+        The axis (or axes) treated as cyclical. Axes of length 2 or less
+        are already cyclical and are ignored. Defaults to ().
 
     Returns
     -------
-    Tuple[np.ndarray, Iterable[Iterable[int]]]
-        A tuple containing the edges and simplices of the grid.
+    edges : (M, 2) np.ndarray
+        Array of edges, including wrap-around edges for cyclical axes.
+    simplices : list of list of int
+        Elementary 4-cycles of the grid, as vertex index lists.
     """
     nodes = np.arange(np.prod(shape)).reshape(shape)
-    if type(cyclical_axis) is int:
+    if isinstance(cyclical_axis, int):
         cyclical_axis = (cyclical_axis,)
     # if the axis length <= 2, then the axis is already cyclical
-
     cyclical_axis = tuple(filter(lambda ax: shape[ax] > 2, cyclical_axis))
 
     edges = np.concatenate(
@@ -87,25 +97,27 @@ def get_2d_edges_and_simplices(
 
 
 def get_3d_edges_and_simplices(
-    shape: Tuple[int, int, int], cyclical_axis: Union[int, Tuple[int, int]] = ()
-) -> Tuple[np.ndarray, Iterable[Iterable[int]]]:
-    """
-    Compute the edges and simplices for a 3D grid.
+    shape: tuple[int, int, int], cyclical_axis: int | tuple[int, ...] = ()
+) -> tuple[np.ndarray, Iterable[Iterable[int]]]:
+    """Compute the edges and simplices for a 3-D grid.
 
     Parameters
     ----------
-    shape : Tuple[int, int, int]
+    shape : tuple of int
         The shape of the grid.
-    cyclical_axis : Union[int, Tuple[int, int]], optional
-        The axis/axes that should be treated as cyclical. Defaults to ().
+    cyclical_axis : int or tuple of int, optional
+        The axis (or axes) treated as cyclical. Axes of length 2 or less
+        are already cyclical and are ignored. Defaults to ().
 
     Returns
     -------
-    Tuple[np.ndarray, Iterable[Iterable[int]]]
-        A tuple containing the edges and simplices of the grid.
+    edges : (M, 2) np.ndarray
+        Array of edges, including wrap-around edges for cyclical axes.
+    simplices : list of list of int
+        Elementary 4-cycles of the grid, as vertex index lists.
     """
     nodes = np.arange(np.prod(shape)).reshape(shape)
-    if type(cyclical_axis) is int:
+    if isinstance(cyclical_axis, int):
         cyclical_axis = (cyclical_axis,)
     cyclical_axis = tuple(filter(lambda ax: shape[ax] > 2, cyclical_axis))
 
@@ -205,38 +217,44 @@ def prepare_weights(
     smoothing: float = 0.1,
     merging_method: str = "mean",
 ) -> npt.NDArray[np.floating]:
-    """Prepare weights for `calculate_m` and `calculate_k` functions.
+    """Prepare per-edge weights from per-vertex weights.
 
-    Assume the weights are the same shape as the phases to be unwrapped.
+    Assume the weights share the shape of the phase array to be unwrapped.
+    Scale the weights from 0 to 1, pick the weights of the phase pairs
+    connected by the edges, and merge each pair into one edge weight with
+    ``merging_method``.
 
-    Scale the weights from 0 to 1. Pick the weights corresponding to the phase pairs connected by the edges.
-    Compute the mean/max/min (depending on the `merging_method`) of each of those pairs to give a weight for each edge.
+    Parameters
+    ----------
+    weights : np.ndarray
+        Per-vertex weights, shaped like the phase array.
+    edges : (M, 2) np.ndarray
+        Edges connecting the phases.
+    smoothing : float, optional
+        Minimal rescaled value where weights are defined, in [0, 1).
+        When positive, 0 is reserved for originally NaN weights; when 0,
+        NaN weights and the smallest non-NaN ones both map to 0.
+        Defaults to 0.1.
+    merging_method : str, optional
+        How to combine two phase weights into a single edge weight;
+        one of "min", "max", "mean". Defaults to "mean".
 
-    Args:
-        weights         :   Array of weights of shape corresponding to the original phases array shape.
-        edges           :   Edges connecting the phases. Shape: (M, 2), where M is the number of edges.
-        smoothing       :   A positive value in range [0, 1). This is the minimal value of the rescaled weights
-                            where they are defined. If smoothing > 0, the value of 0 is reserved for places where
-                            the weights are originally NaN. If smoothing == 0, 0 will be used for both NaN weights
-                            and smallest non-NaN ones.
-        merging_method  :   Way of combining two phase weights into a single edge weight.
-
-    Returns:
-        Array of weights for the edges, shape: (M,). Rescaled to [0, 1].
+    Returns
+    -------
+    (M,) np.ndarray
+        Per-edge weights rescaled to [0, 1], with NaN entries replaced by 0.
     """
-
     if not 0 <= smoothing < 1:
         raise ValueError(
             "`smoothing` should be a value between 0 (inclusive) and 1 (non inclusive); got "
             + str(smoothing)
         )
     # scale the weights from 0 to 1
-
     weights = weights - np.nanmin(weights)
     current_max = np.nanmax(weights)
     if not current_max:
-        # current maximum is 0, which means all weights originally had the same value, now 0; replace everything with 1
-
+        # current maximum is 0, which means all weights originally had the same value,
+        # now 0; replace everything with 1
         weights += 1
     else:
         weights /= current_max
@@ -244,19 +262,17 @@ def prepare_weights(
         weights += smoothing
     # pick the weights corresponding to the phases connected by the edges
     # and use `merging_method` to get one weight for each edge
-
     allowed_merging_methods = ["min", "max", "mean"]
     if merging_method not in allowed_merging_methods:
         raise ValueError(
             "`merging_method` should be one of: "
-            + ", ".join(merging_method)
+            + ", ".join(allowed_merging_methods)
             + "; got "
             + str(merging_method)
         )
     weights_for_edges = getattr(np, merging_method)(weights.ravel()[edges], axis=1)
 
     # make sure there are no NaNs in the weights; replace any with 0s
-
     weights_for_edges[np.isnan(weights_for_edges)] = 0
 
     return weights_for_edges

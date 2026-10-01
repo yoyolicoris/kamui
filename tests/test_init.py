@@ -1,0 +1,129 @@
+import numpy as np
+import pytest
+
+import kamui
+from kamui import unwrap_arbitrary, unwrap_dimensional, wrap_difference
+
+
+def test_version_wired():
+    assert kamui.__version__
+    assert "__version__" in kamui.__all__
+
+
+def test_wrap_difference_bounds():
+    rng = np.random.default_rng(0)
+    x = rng.uniform(-20, 20, size=1000)
+    w = wrap_difference(x)
+    assert np.all(w >= -np.pi)
+    assert np.all(w < np.pi)
+
+
+def test_wrap_difference_endpoints():
+    np.testing.assert_allclose(wrap_difference(np.array([-np.pi, np.pi])), [-np.pi, -np.pi])
+
+
+def test_wrap_difference_period_invariance():
+    rng = np.random.default_rng(1)
+    x = rng.uniform(-20, 20, size=100)
+    k = rng.integers(-3, 4, size=100)
+    np.testing.assert_allclose(wrap_difference(x + k * 2 * np.pi), wrap_difference(x))
+
+
+def test_wrap_difference_custom_period():
+    x = np.array([0.0, 0.6, 1.4, 2.0])
+    np.testing.assert_allclose(wrap_difference(x, period=2.0), [0.0, 0.6, -0.6, 0.0])
+
+
+def _ramp_2d(n=6, m=6):
+    yy, xx = np.mgrid[0:n, 0:m]
+    return 1.5 * xx + 1.2 * yy
+
+
+def test_unwrap_dimensional_2d():
+    true = _ramp_2d()
+    result = unwrap_dimensional(wrap_difference(true))
+    assert result is not None
+    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+
+
+def test_unwrap_dimensional_edgelist():
+    true = _ramp_2d(5, 5)
+    result = unwrap_dimensional(wrap_difference(true), use_edgelist=True)
+    assert result is not None
+    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+
+
+def test_unwrap_dimensional_weights_and_start_pixel():
+    true = _ramp_2d()
+    weights = np.linspace(0.5, 1.0, true.size).reshape(true.shape)
+    result = unwrap_dimensional(wrap_difference(true), start_pixel=(2, 3), weights=weights)
+    assert result is not None
+    np.testing.assert_allclose(result - result[2, 3], true - true[2, 3], atol=1e-6)
+
+
+def test_unwrap_dimensional_cyclical():
+    n, m = 6, 8
+    ii, jj = np.mgrid[0:n, 0:m]
+    true = 2.5 * np.sin(2 * np.pi * ii / n) + 0.4 * jj
+    result = unwrap_dimensional(wrap_difference(true), cyclical_axis=0)
+    assert result is not None
+    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+
+
+def test_unwrap_dimensional_3d():
+    n = 3
+    zz, yy, xx = np.mgrid[0:n, 0:n, 0:n]
+    true = 1.2 * (xx + yy + zz)
+    result = unwrap_dimensional(wrap_difference(true))
+    assert result is not None
+    np.testing.assert_allclose(result - result[0, 0, 0], true - true[0, 0, 0], atol=1e-6)
+
+
+def test_unwrap_dimensional_rejects_1d():
+    with pytest.raises(ValueError, match="2D or 3D"):
+        unwrap_dimensional(np.zeros(5))
+
+
+def test_unwrap_dimensional_propagates_none(monkeypatch):
+    monkeypatch.setattr(kamui, "unwrap_arbitrary", lambda *a, **k: None)
+    assert unwrap_dimensional(np.zeros((4, 4))) is None
+
+
+def test_unwrap_arbitrary_ilp_with_simplices():
+    psi = np.array([0.0, 0.5, 1.0])
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+    result = unwrap_arbitrary(psi, edges, [[0, 1, 2]])
+    np.testing.assert_allclose(result - result[0], psi - psi[0], atol=1e-9)
+
+
+def test_unwrap_arbitrary_ilp_edgelist():
+    true = np.array([0.0, 2.0, 4.0, 6.0])
+    psi = wrap_difference(true)
+    edges = np.array([[0, 1], [1, 2], [2, 3]])
+    result = unwrap_arbitrary(psi, edges, None)
+    np.testing.assert_allclose(result, true, atol=1e-9)
+
+
+def test_unwrap_arbitrary_ilp_edgelist_infeasible(monkeypatch):
+    monkeypatch.setattr(kamui, "calculate_m", lambda *a, **k: None)
+    result = unwrap_arbitrary(np.zeros(3), np.array([[0, 1], [1, 2]]), None)
+    assert result is None
+
+
+def test_unwrap_arbitrary_ilp_simplex_infeasible(monkeypatch):
+    monkeypatch.setattr(kamui, "calculate_k", lambda *a, **k: None)
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+    result = unwrap_arbitrary(np.zeros(3), edges, [[0, 1, 2]])
+    assert result is None
+
+
+def test_unwrap_arbitrary_gc():
+    psi = np.array([0.0, 1.0])
+    edges = np.array([[0, 1]])
+    result = unwrap_arbitrary(psi, edges, method="gc")
+    np.testing.assert_allclose(result, psi, atol=1e-9)
+
+
+def test_unwrap_arbitrary_rejects_bad_method():
+    with pytest.raises(ValueError, match="method must be"):
+        unwrap_arbitrary(np.zeros(2), np.array([[0, 1]]), method="bad")
