@@ -79,6 +79,13 @@ def test_unwrap_dimensional_3d():
     np.testing.assert_allclose(result - result[0, 0, 0], true - true[0, 0, 0], atol=1e-6)
 
 
+def test_unwrap_dimensional_gc():
+    true = _ramp_2d()
+    result = unwrap_dimensional(wrap_difference(true), method="gc")
+    assert result is not None
+    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+
+
 def test_unwrap_dimensional_rejects_1d():
     with pytest.raises(ValueError, match="2D or 3D"):
         unwrap_dimensional(np.zeros(5))

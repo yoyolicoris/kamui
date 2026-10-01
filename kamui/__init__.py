@@ -93,7 +93,8 @@ def unwrap_dimensional(
         Defaults to "mean".
     weights : np.ndarray, optional
         Weights defining the 'goodness' of value at each vertex.
-        Shape must match the shape of x. Defaults to None.
+        Shape must match the shape of x. Only the ILP solvers
+        (``method="ilp"``) use weights. Defaults to None.
     **kwargs
         Other arguments passed to :func:`kamui.unwrap_arbitrary`.
 
@@ -120,14 +121,14 @@ def unwrap_dimensional(
     psi = x.ravel()
 
     if weights is not None:
-        # convert per-vertex weights to per-edge weights
-        weights = prepare_weights(weights, edges=edges, merging_method=merging_method)
+        # convert per-vertex weights to per-edge weights; forward them only
+        # when given, since puma (method="gc") takes no weights argument
+        kwargs["weights"] = prepare_weights(weights, edges=edges, merging_method=merging_method)
     result = unwrap_arbitrary(
         psi,
         edges,
         None if use_edgelist else simplices,
         start_i=start_i,
-        weights=weights,
         **kwargs,
     )
     if result is None:
