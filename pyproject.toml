@@ -42,12 +42,18 @@ Repository = "https://github.com/yoyolicoris/kamui"
 
 # The git tag is the single source of truth for the installed version:
 # `git tag v0.3.0`, and hatch-vcs derives it at build time. conda-recipe/
-# meta.yaml carries the only hand-written version, and only until submission.
+# recipe.yaml carries the only hand-written version, and only until submission.
 [tool.hatch.version]
 source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["kamui"]
+
+# Without this the sdist ships every tracked file, the example notebook and
+# pixi.lock included (1.4 MB, against 10 kB for the old setuptools sdists).
+# Tests stay in so downstream packagers such as conda-forge can run them.
+[tool.hatch.build.targets.sdist]
+include = ["kamui", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -61,6 +67,9 @@ testpaths = ["tests"]
 [tool.coverage.run]
 omit = ["tests/*"]
 relative_files = true
+
+[tool.coverage.report]
+fail_under = 100
 
 [tool.ruff]
 line-length = 100

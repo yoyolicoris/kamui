@@ -54,9 +54,9 @@ py312 = ["py312", "test"]
 py313 = ["py313", "test"]
 
 [tasks]
-test = { cmd = "pytest -v --cov --cov-branch --cov-report=xml", description = "Run the test suite and write coverage.xml" }
-lint = { cmd = "ruff check kamui tests", description = "Lint with ruff" }
+test = { cmd = "pytest -v --cov --cov-branch --cov-report=term-missing --cov-report=xml", description = "Run the test suite, enforce full coverage, and write coverage.xml" }
+lint = { cmd = "ruff check kamui tests scripts", description = "Lint with ruff" }
 docstrings = { cmd = "python -m numpydoc lint kamui/*.py", description = "Validate public docstrings against numpydoc" }
-format = { cmd = "ruff format kamui tests", description = "Format with ruff" }
+format = { cmd = "ruff format kamui tests scripts", description = "Format with ruff" }
 build = { cmd = "python -m build", description = "Build sdist and wheel" }
 smoke = { cmd = "python scripts/smoke_wheel.py", description = "Install the built wheel in a clean venv and check its version wiring" }

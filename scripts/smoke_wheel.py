@@ -3,10 +3,11 @@
 ``python -m build`` can succeed while producing a wheel that is unusable, and
 the version is wired through three hops (git tag, ``hatch-vcs``, then
 ``importlib.metadata`` at import time), none of which the build itself
-verifies. A shallow checkout, for instance, builds cleanly and yields a
-placeholder version that would be published for real. Run after ``build``.
+verifies. A checkout without tags, for instance, builds cleanly and yields a
+placeholder ``0.1.devN`` version. Run after ``build``.
 """
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -31,8 +32,10 @@ def main() -> int:
         win = sys.platform == "win32"
         py = Path(tmp) / ("Scripts" if win else "bin") / ("python.exe" if win else "python")
         subprocess.run([py, "-m", "pip", "install", "--quiet", str(wheel)], check=True)
+        # -I keeps the working directory off sys.path: run from the repo root, a
+        # plain `python -c` imports the source tree and never touches the wheel
         got = subprocess.run(
-            [py, "-c", "import kamui; print(kamui.__version__)"],
+            [py, "-I", "-c", "import kamui; print(kamui.__version__)"],
             check=True,
             capture_output=True,
             text=True,
@@ -44,10 +47,17 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    if got.startswith("0.0.0"):
+    # In a tag build (release.yml) the wheel must carry exactly the pushed tag;
+    # anything else would publish a version nobody tagged.
+    if os.environ.get("GITHUB_REF_TYPE") == "tag":
+        tag = os.environ["GITHUB_REF_NAME"]
+        if got != tag.removeprefix("v"):
+            print(f"version resolved to {got} but the pushed tag is {tag}", file=sys.stderr)
+            return 1
+    elif subprocess.run(["git", "describe", "--tags"], capture_output=True).returncode:
         print(
-            f"version resolved to {got}: the checkout has no tags or history "
-            "(is fetch-depth: 0 set?)",
+            f"version resolved to {got}, a hatch-vcs placeholder: the checkout has "
+            "no tags (is fetch-depth: 0 set?)",
             file=sys.stderr,
         )
         return 1
