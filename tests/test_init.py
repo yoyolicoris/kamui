@@ -14,8 +14,12 @@ def test_wrap_difference_bounds():
     rng = np.random.default_rng(0)
     x = rng.uniform(-20, 20, size=1000)
     w = wrap_difference(x)
-    assert np.all(np.abs(w) <= np.pi)
-    assert np.all(w > -np.pi)
+    assert np.all(w >= -np.pi)
+    assert np.all(w < np.pi)
+
+
+def test_wrap_difference_endpoints():
+    np.testing.assert_allclose(wrap_difference(np.array([-np.pi, np.pi])), [-np.pi, -np.pi])
 
 
 def test_wrap_difference_period_invariance():
@@ -103,6 +107,13 @@ def test_unwrap_arbitrary_ilp_edgelist():
 def test_unwrap_arbitrary_ilp_edgelist_infeasible(monkeypatch):
     monkeypatch.setattr(kamui, "calculate_m", lambda *a, **k: None)
     result = unwrap_arbitrary(np.zeros(3), np.array([[0, 1], [1, 2]]), None)
+    assert result is None
+
+
+def test_unwrap_arbitrary_ilp_simplex_infeasible(monkeypatch):
+    monkeypatch.setattr(kamui, "calculate_k", lambda *a, **k: None)
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+    result = unwrap_arbitrary(np.zeros(3), edges, [[0, 1, 2]])
     assert result is None
 
 

@@ -75,10 +75,10 @@ def calculate_k(
         Wrapped phase differences divided by the period; float or int.
     weights : (M,) np.ndarray, optional
         Per-edge weights. When None, each edge is weighted by its number of
-        incident simplices with nonzero residue if ``adaptive_weighting`` is
+        incident simplices with zero residue if ``adaptive_weighting`` is
         set, else uniformly. Defaults to None.
     adaptive_weighting : bool, optional
-        Weight edges by incident nonzero-residue simplex counts.
+        Weight edges by incident zero-residue simplex counts.
         Defaults to True.
 
     Returns
@@ -152,7 +152,7 @@ def calculate_m(
 ) -> np.ndarray | None:
     """Solve integer vertex offsets from quantized edge differences with an ILP.
 
-    Finds per-vertex integers ``m`` with ``m[v] - m[u]`` matching
+    Finds per-vertex integers ``m`` with ``m[u] - m[v]`` matching
     ``differences`` on each edge ``(u, v)``, minimizing the weighted L1
     norm of the slacks through HiGHS.
 

@@ -19,7 +19,7 @@ __all__ = [
 
 
 def get_2d_edges_and_simplices(
-    shape: tuple[int, int], cyclical_axis: int | tuple[int, int] = ()
+    shape: tuple[int, int], cyclical_axis: int | tuple[int, ...] = ()
 ) -> tuple[np.ndarray, Iterable[Iterable[int]]]:
     """Compute the edges and simplices for a 2-D grid.
 
@@ -97,7 +97,7 @@ def get_2d_edges_and_simplices(
 
 
 def get_3d_edges_and_simplices(
-    shape: tuple[int, int, int], cyclical_axis: int | tuple[int, int] = ()
+    shape: tuple[int, int, int], cyclical_axis: int | tuple[int, ...] = ()
 ) -> tuple[np.ndarray, Iterable[Iterable[int]]]:
     """Compute the edges and simplices for a 3-D grid.
 

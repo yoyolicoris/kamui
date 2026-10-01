@@ -37,6 +37,7 @@ requirements:
     - python >=3.10
     - pip
     - hatchling
+    - hatch-vcs
   run:
     - python >=3.10
     - numpy >=2

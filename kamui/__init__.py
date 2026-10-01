@@ -49,7 +49,7 @@ __all__ = [
 
 
 def wrap_difference(x: np.ndarray, period: float = 2 * np.pi) -> np.ndarray:
-    """Wrap values into the interval ``(-period/2, period/2]``.
+    """Wrap values into the interval ``[-period/2, period/2)``.
 
     Parameters
     ----------
@@ -61,7 +61,7 @@ def wrap_difference(x: np.ndarray, period: float = 2 * np.pi) -> np.ndarray:
     Returns
     -------
     (N,) np.ndarray
-        ``x`` wrapped into ``(-period/2, period/2]``.
+        ``x`` wrapped into ``[-period/2, period/2)``.
     """
     return np.mod(x + period / 2, period) - period / 2
 
@@ -70,7 +70,7 @@ def unwrap_dimensional(
     x: np.ndarray,
     start_pixel: tuple[int, int] | tuple[int, int, int] | None = None,
     use_edgelist: bool = False,
-    cyclical_axis: int | tuple[int, int] = (),
+    cyclical_axis: int | tuple[int, ...] = (),
     merging_method: str = "mean",
     weights: np.ndarray | None = None,
     **kwargs: Any,
@@ -193,6 +193,8 @@ def unwrap_arbitrary(
         else:
             diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
             k = calculate_k(edges, simplices, diff / period, **kwargs)
+            if k is None:
+                return None
             correct_diff = diff + k * period
 
             result = (
