@@ -21,6 +21,25 @@ except ImportError:  # pragma: no cover (PyMaxflow is always installed in the te
 __all__ = ["integrate", "calculate_k", "calculate_m", "puma"]
 
 
+def _solve_integer_program(
+    c: np.ndarray, A_eq: sp.csr_matrix, b_eq: np.ndarray
+) -> np.ndarray | None:
+    """Minimize ``c @ x`` subject to ``A_eq @ x == b_eq``, ``x >= 0``, x integer.
+
+    Try the LP relaxation first: it is several times cheaper than branch and
+    bound, and an integral LP optimum is also optimal for the integer
+    program. Not every input gives one (3-D grids with a cyclical axis and
+    arbitrary user cycles can have half-integral optima), so re-solve with
+    integrality constraints whenever HiGHS returns a fractional solution.
+    Returns None unless HiGHS reports an optimal solution: on a time or
+    iteration limit it can hand back a point that is not optimal.
+    """
+    res = linprog(c, A_eq=A_eq, b_eq=b_eq)
+    if res.success and np.abs(res.x - np.round(res.x)).max() > 1e-6:
+        res = linprog(c, A_eq=A_eq, b_eq=b_eq, integrality=1)
+    return np.round(res.x) if res.success else None
+
+
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
     """Integrate edge weights along a depth-first traversal of a directed graph.
 
@@ -57,11 +76,18 @@ def calculate_k(
     weights: np.ndarray | None = None,
     adaptive_weighting: bool = True,
 ) -> np.ndarray | None:
-    """Solve integer edge ambiguities on elementary cycles with an ILP.
+    """Solve per-edge integer ambiguities on elementary cycles.
 
     Finds per-edge integers ``k`` such that the corrected differences
     ``differences + k`` sum to zero around every simplex, minimizing the
     weighted L1 norm of ``k`` through HiGHS.
+
+    The LP relaxation is solved first and kept when its optimum is
+    integral. That holds for 2-D grids (cyclical axes included) and planar
+    meshes, whose cycle matrices are totally unimodular, and for 3-D grids
+    without a cyclical axis when ``differences`` are wrapped phase
+    differences. Other cycle sets, such as 3-D grids with a cyclical axis,
+    can have fractional optima and are re-solved as an integer program.
 
     Parameters
     ----------
@@ -84,7 +110,8 @@ def calculate_k(
     Returns
     -------
     (M,) np.ndarray or None
-        Integer ambiguity per edge, or None if HiGHS reports infeasibility.
+        Integer ambiguity per edge, or None if HiGHS finds no optimal
+        solution, e.g. because the program is infeasible.
     """
     M, N = edges.shape[0], len(simplices)
 
@@ -137,12 +164,10 @@ def calculate_k(
             c = np.ones((M * 2,), dtype=np.int64)
     else:
         c = np.tile(weights, 2)
-    res = linprog(c, A_eq=A_eq, b_eq=b_eq, integrality=1)
-    if res.x is None:
+    x = _solve_integer_program(c, A_eq, b_eq)
+    if x is None:
         return None
-    k = res.x[:M] - res.x[M:]
-    k = k.astype(np.int64)
-    return k
+    return (x[:M] - x[M:]).astype(np.int64)
 
 
 def calculate_m(
@@ -150,11 +175,15 @@ def calculate_m(
     differences: np.ndarray,
     weights: np.ndarray | None = None,
 ) -> np.ndarray | None:
-    """Solve integer vertex offsets from quantized edge differences with an ILP.
+    """Solve per-vertex integer offsets from quantized edge differences.
 
     Finds per-vertex integers ``m`` with ``m[u] - m[v]`` matching
     ``differences`` on each edge ``(u, v)``, minimizing the weighted L1
     norm of the slacks through HiGHS.
+
+    The constraint matrix (an edge-node incidence matrix beside two
+    identity blocks) is totally unimodular, so the LP relaxation already
+    has an integral optimum; the integer program is only a fallback.
 
     Parameters
     ----------
@@ -168,7 +197,8 @@ def calculate_m(
     Returns
     -------
     (V,) np.ndarray or None
-        Integer offset per vertex, or None if HiGHS reports infeasibility.
+        Integer offset per vertex, or None if HiGHS finds no optimal
+        solution, e.g. because the program is infeasible.
     """
     assert differences.dtype == np.int64, "differences must be int"
     M = edges.shape[0]
@@ -194,11 +224,10 @@ def calculate_m(
 
     b_eq = differences
 
-    res = linprog(c, A_eq=A_eq, b_eq=b_eq, integrality=1)
-    if res.x is None:
+    x = _solve_integer_program(c, A_eq, b_eq)
+    if x is None:
         return None
-    m = res.x[:N]
-    return m.astype(np.int64)
+    return x[:N].astype(np.int64)
 
 
 def puma(psi: np.ndarray, edges: np.ndarray, max_jump: int = 1, p: float = 1) -> np.ndarray:

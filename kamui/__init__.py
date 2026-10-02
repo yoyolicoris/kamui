@@ -102,7 +102,7 @@ def unwrap_dimensional(
     -------
     np.ndarray or None
         The unwrapped phase of the same shape as x, or None if the
-        underlying solver reports infeasibility.
+        underlying solver finds no optimal solution.
     """
     if start_pixel is None:
         start_pixel = (0,) * x.ndim
@@ -174,7 +174,7 @@ def unwrap_arbitrary(
     -------
     np.ndarray or None
         The unwrapped phase of the same shape as psi, or None if the
-        underlying solver reports infeasibility.
+        underlying solver finds no optimal solution.
     """
     if method == "gc":
         m = puma(psi / period, edges, **kwargs)
