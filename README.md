@@ -5,22 +5,38 @@
 
 Kamui is a python package for robust and accurate phase unwrapping on 2-D, 3-D, or sparse data. 
 
-Kamui unwraps the phases by viewing the data points as vertices $V$ connected with edges $E$ and solving the following integer linear programming (ILP) problem:
+## How it works
+
+Kamui views the data as a graph $`G = (V, E)`$, with the wrapped phase $`\psi_v \in [-\pi, \pi)`$ at each vertex $`v`$. Along each edge $`e = (u, v)`$, the wrapped phase difference is
 
 ```math
-\min_{k} w^T |k|,
+x_e = \mathcal{W}(\psi_v - \psi_u),
+\qquad
+\mathcal{W}(\theta) = \theta - 2\pi \left\lfloor \frac{\theta + \pi}{2\pi} \right\rfloor \in [-\pi, \pi).
 ```
+
+The unwrapped phase $`\phi`$ differs from $`\psi`$ by whole multiples of $`2\pi`$, so its differences are $`\phi_v - \phi_u = x_e + 2\pi k_e`$, for an integer ambiguity $`k_e`$ on each edge.
+True phase differences are irrotational: they sum to zero around every elementary cycle of the graph, such as a grid cell or a mesh triangle.
+Kamui picks the cheapest ambiguities that satisfy this by solving the integer linear program (ILP)
 
 ```math
-\text{s.t.} Ak = -A\frac{x}{2\pi},
+\min_{k \in \mathbb{Z}^{M}} \; \sum_{e \in E} w_e \lvert k_e \rvert
+\quad \text{s.t.} \quad
+A k = -\frac{1}{2\pi} A x .
 ```
-where $`k_{i \in [0, M)} \in \mathbb{Z}`$ is the edge ambiguities to be computed, $`w_{i \in [0, M)} \in \mathbb{R}^+`$ is the weights, $`x_{i \in [0, M)} = (V_v - V_u + \pi) \pmod {2\pi} - \pi |  (u, v) = E_i`$ is the pseudo phase derivatives, $`M = |E|`$. 
-$`A_{ij} \in \{-1, 0, 1\} | i \in [0, N) \cap j \in [0, M)`$ and $N$ is the number of elementary cycles enclosed by $E$.
 
-This formulation is based on the fact that the true phase differences, $2\pi k + x$, should fulfill the irrotationality constraint, which means the summation of phase derivatives of each elementary cycles is zero.
+Here:
+
+- $`M = \lvert E \rvert`$ is the number of edges, and $`w \in \mathbb{R}_{\ge 0}^{M}`$ are the edge weights.
+- $`A \in \{-1, 0, 1\}^{N \times M}`$ is the incidence matrix of the $`N`$ elementary cycles. $`A_{ce} = 1`$ if cycle $`c`$ traverses edge $`e`$ from $`u`$ to $`v`$, $`-1`$ if it traverses it from $`v`$ to $`u`$, and $`0`$ if $`e`$ is not on $`c`$.
+- The right-hand side is integral: $`\frac{1}{2\pi} (A x)_c`$ is the residue of cycle $`c`$, the number of whole turns that the wrapped differences around it add up to.
+
+Kamui then integrates $`x + 2\pi k`$ along a spanning tree from the reference vertex to recover $`\phi`$.
 This is the general form of the network programming approach proposed in the paper "[A novel phase unwrapping method based on network programming](https://ieeexplore.ieee.org/document/673674)".
+With `period=T`, replace $`2\pi`$ by $`T`$ throughout.
 
-Kamui solves the linear programming (LP) relaxation first. For 2-D grids, planar meshes and 3-D grids without a cyclical axis, its optimum is already integral; other inputs fall back to the integer program.
+Kamui solves the linear programming (LP) relaxation, with $`k \in \mathbb{R}^{M}`$, first.
+For 2-D grids and planar meshes, $`A`$ is totally unimodular, so the LP optimum is already integral. The same is true of 3-D grids without a cyclical axis. Other inputs fall back to the integer program.
 Large inputs are still computationally heavy; see [Performance and memory](#performance-and-memory).
 
 ## Installation
@@ -129,6 +145,21 @@ Without `simplices`, `unwrap_arbitrary(psi, edges)` uses the edgelist formulatio
 | Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `adaptive_weighting=False` makes every edge cost 1, and `weights` overrides both. |
 | Edgelist ILP | `use_edgelist=True`, or `unwrap_arbitrary(psi, edges)` | edges only | Uniform weights unless `weights` is given. |
 | PUMA | `method="gc"` | edges and `pip install kamui[extra]` | Minimizes a $`p`$-norm energy (options `p` and `max_jump`) and takes no weights. Currently slower than the ILP solvers on grids ([#26](https://github.com/yoyolicoris/kamui/issues/26)). GPL; see [Installation](#installation). |
+
+The edgelist ILP needs no cycles, because it optimizes vertex offsets $`m \in \mathbb{Z}^{\lvert V \rvert}`$ directly, with $`\phi = \psi + 2\pi m`$:
+
+```math
+\min_{m \in \mathbb{Z}^{\lvert V \rvert}} \; \sum_{e = (u, v) \in E} w_e \left\lvert m_v - m_u + \operatorname{round}\!\left( \frac{\psi_v - \psi_u}{2\pi} \right) \right\rvert .
+```
+
+The term inside the absolute value is the edge ambiguity $`k_e`$. This is therefore the cost of the simplex ILP, optimized over offsets instead of ambiguities. The two optima agree whenever the cycles cover every loop of the graph, as grid cells and mesh triangles do.
+
+PUMA instead uses graph cuts to minimize the $`p`$-norm of the unwrapped differences:
+
+```math
+\min_{m \in \mathbb{Z}^{\lvert V \rvert}} \; \sum_{e = (u, v) \in E} \lvert \phi_v - \phi_u \rvert^{p},
+\qquad \phi = \psi + 2\pi m .
+```
 
 ### Solver report
 
