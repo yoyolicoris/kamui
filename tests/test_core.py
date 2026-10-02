@@ -18,9 +18,9 @@ def test_integrate_chain():
 
 
 def test_integrate_sums_along_tree_paths():
-    # The tree branches at the root, so any depth-first order jumps from the
-    # end of one branch to the start of the other, two nodes that share no
-    # edge. Each node must be accumulated from its own parent.
+    # The tree branches at the root, so the visit order steps between the two
+    # branches, from one node to another that shares no edge with it. Each
+    # node must be accumulated from its own parent.
     edges = np.array([[0, 1], [1, 2], [0, 3], [3, 4]])
     weights = np.array([1.0, 2.0, 4.0, 8.0])
     both = np.concatenate((edges, np.flip(edges, 1)))

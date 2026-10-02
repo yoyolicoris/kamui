@@ -41,7 +41,7 @@ def _solve_integer_program(
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
-    """Integrate edge weights along the depth-first spanning tree of a directed graph.
+    """Integrate edge weights along the breadth-first spanning tree of a directed graph.
 
     Parameters
     ----------
@@ -60,19 +60,22 @@ def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.nd
     """
     N = int(edges.max()) + 1
     G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])), shape=(N, N))
-    order, parent = csg.depth_first_order(G, start_i, directed=True, return_predecessors=True)
+    # Any spanning tree gives the same sums when the weights are consistent
+    # around every cycle; a breadth-first tree is shallow, which keeps the
+    # pointer jumping below to few passes.
+    order, parent = csg.breadth_first_order(G, start_i, directed=True, return_predecessors=True)
 
     # Start from the weight of the tree edge into each reached node. Each node
-    # must build on its parent, not on the node visited just before it: after
-    # the traversal backtracks, those two share no edge.
+    # must build on its parent, not on the node visited just before it: two
+    # consecutive nodes in visit order often share no edge.
     result = np.zeros(N, dtype=weights.dtype)
     children = order[1:]
     if children.size:
         result[children] = np.asarray(G[parent[children], children]).ravel()
 
     # Pointer jumping: each pass adds the partial sum held by a node's current
-    # ancestor and then skips to that ancestor's ancestor, so a tree path of
-    # depth d is summed in about log2(d) vectorized passes.
+    # ancestor and then skips to that ancestor's ancestor, so a tree of depth
+    # d is summed in about log2(d) vectorized passes.
     ancestor = parent.copy()
     pending = np.flatnonzero(ancestor >= 0)
     while pending.size:

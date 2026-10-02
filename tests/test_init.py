@@ -88,8 +88,8 @@ def test_unwrap_dimensional_gc():
 
 
 def test_unwrap_dimensional_3d_ramp_on_larger_grid():
-    # 10x10x10 is large enough for the depth-first traversal to backtrack to
-    # voxels that are not adjacent to the one visited before
+    # 10x10x10 is large enough for consecutive voxels in the traversal order
+    # not to be adjacent, which broke integrate before #22
     zz, yy, xx = np.mgrid[0:10, 0:10, 0:10]
     true = 1.3 * zz + 0.9 * yy - 1.1 * xx
     result = unwrap_dimensional(wrap_difference(true))
