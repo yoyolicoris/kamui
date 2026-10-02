@@ -5867,9 +5867,9 @@ packages:
   name: kamui
   requires_dist:
   - numpy>=2
+  - pylmcf>=1.2
   - scipy>=1.13
   - pymaxflow ; extra == 'extra'
-  - pylmcf>=1.2 ; extra == 'mcf'
   requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/06/eb/1c4f3e1fcc41093e321b1c4eb7ca79f628a36057496398bb9fba4d97e417/nanobind_backend-1.0.0-cp313-cp313-macosx_10_14_x86_64.whl
   name: nanobind-backend

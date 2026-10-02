@@ -27,8 +27,6 @@ pytest-cov = ">=7.1.0, <8"
 # compiler (present on every GitHub-hosted runner).
 [feature.test.pypi-dependencies]
 PyMaxflow = "*"
-# Not on conda-forge; it backs the min-cost-flow solver (kamui[mcf]).
-pylmcf = ">=1.2"
 
 [feature.dev.dependencies]
 ruff = "*"

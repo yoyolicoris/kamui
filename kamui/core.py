@@ -9,6 +9,7 @@ PyMaxflow is installed.
 from collections.abc import Iterable
 
 import numpy as np
+import pylmcf
 import scipy.sparse as sp
 from scipy.optimize import OptimizeResult, linprog
 from scipy.sparse import csgraph as csg
@@ -17,11 +18,6 @@ try:
     import maxflow
 except ImportError:  # pragma: no cover (PyMaxflow is always installed in the test env)
     maxflow = None
-
-try:
-    import pylmcf
-except ImportError:  # pragma: no cover (pylmcf is always installed in the test env)
-    pylmcf = None
 
 __all__ = ["integrate", "calculate_k", "calculate_m", "puma"]
 
@@ -53,11 +49,6 @@ def _solve_integer_program(
         solver="highs",
     )
     return (np.round(res.x) if res.success else None), info
-
-
-# Resolution, relative to the largest weight, at which fractional edge weights
-# are rounded to the integer costs that LEMON requires.
-_COST_RESOLUTION = 10**6
 
 
 def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray] | None:
@@ -98,16 +89,14 @@ def _solve_min_cost_flow(
 
     ``tail`` and ``head`` are the dual-graph arcs from `_dual_graph_arcs`, and
     ``k[e]`` is the flow from tail to head minus the flow back. Edges without
-    an arc keep ``k = 0``. Raises RuntimeError if the flow is infeasible.
+    an arc keep ``k = 0``. The weights must be non-negative integers. Raises
+    RuntimeError if the flow is infeasible.
     """
     k = np.zeros(tail.size, dtype=np.int64)
     edge = np.flatnonzero(tail >= 0)
     if edge.size == 0:
         return k
-    cost = w[edge]
-    if not np.array_equal(cost, np.round(cost)):
-        cost = cost * (_COST_RESOLUTION / cost.max())
-    cost = np.round(cost).astype(np.int64)
+    cost = w[edge].astype(np.int64)
     starts = np.concatenate((tail[edge], head[edge]))
     ends = np.concatenate((head[edge], tail[edge]))
     order = np.lexsort((ends, starts))  # pylmcf wants arcs sorted by (start, end)
@@ -213,13 +202,13 @@ def calculate_k(
         Defaults to True.
     solver : {"auto", "highs", "lemon"}, optional
         "lemon" solves the program as a min-cost flow with LEMON's network
-        simplex, through pylmcf (``pip install kamui[mcf]``). It needs
-        non-negative weights and every edge on at most two cycles,
+        simplex, through pylmcf. It needs every edge on at most two cycles,
         traversed in opposite directions, as on 2-D grids and planar
-        meshes; fractional weights are rounded to integers at a resolution
-        of 1e-6 of the largest weight. "highs" solves it as a linear
-        program with HiGHS. "auto" uses LEMON when pylmcf is installed and
-        the program allows it, and HiGHS otherwise. Defaults to "auto".
+        meshes, and non-negative integer weights. The default adaptive and
+        uniform weights are integers; to use fractional weights, scale and
+        round them first. "highs" solves the program as a linear program
+        with HiGHS. "auto" uses LEMON when the program allows it, and
+        HiGHS otherwise. Defaults to "auto".
     return_info : bool, optional
         Also return the solver report. Defaults to False.
 
@@ -238,12 +227,11 @@ def calculate_k(
 
     Raises
     ------
-    ImportError
-        If ``solver="lemon"`` and pylmcf is not installed.
     ValueError
         If the edges are not unique, the simplices use an edge not in
         ``edges``, ``solver`` is unknown, or ``solver="lemon"`` and the
-        program is not a min-cost flow.
+        weights are not non-negative integers or the cycles do not form
+        a min-cost flow.
     """
     if solver not in ("auto", "highs", "lemon"):
         raise ValueError(f"solver must be 'auto', 'highs' or 'lemon'; got {solver!r}")
@@ -299,20 +287,25 @@ def calculate_k(
     else:
         c = np.tile(weights, 2)
 
+    w = np.asarray(c[:M], dtype=np.float64)
+    integer = np.array_equal(w, np.round(w))  # also False for NaN
+    non_negative = np.min(w, initial=0) >= 0
     arcs = None
-    if solver != "highs" and pylmcf is not None and np.min(c, initial=0) >= 0:
+    if solver != "highs" and integer and non_negative:
         arcs = _dual_graph_arcs(V)
     if solver == "lemon" and arcs is None:
-        if pylmcf is None:
-            raise ImportError(
-                "solver='lemon' requires pylmcf; install with `pip install kamui[mcf]`"
+        if not integer:
+            raise ValueError(
+                "solver='lemon' needs integer weights; scale and round them first, "
+                "e.g. np.round(weights * 1000)"
             )
+        if not non_negative:
+            raise ValueError("solver='lemon' needs non-negative weights")
         raise ValueError(
-            "solver='lemon' needs non-negative weights and every edge on at most two "
-            "cycles, traversed in opposite directions"
+            "solver='lemon' needs every edge on at most two cycles, traversed in "
+            "opposite directions"
         )
     if arcs is not None:
-        w = np.asarray(c[:M], dtype=np.float64)
         try:
             k = _solve_min_cost_flow(*arcs, b_eq, w)
         except RuntimeError as err:

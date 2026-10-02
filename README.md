@@ -36,7 +36,7 @@ This is the general form of the network programming approach proposed in the pap
 With `period=T`, replace $`2\pi`$ by $`T`$ throughout.
 
 On 2-D grids and planar meshes, every edge lies on at most two cycles, traversed in opposite directions. $`A`$ is then the incidence matrix of the dual graph, which has one node per cycle and one more for the outside, and the program is a min-cost flow: the residues are the supplies and $`k_e`$ is the flow across edge $`e`$.
-With [`kamui[mcf]`](#installation) installed, Kamui solves these programs with LEMON's network simplex, which is many times faster.
+Kamui solves these programs with the network simplex of the [LEMON](https://lemon.cs.elte.hu/) graph library, which is many times faster than a general LP solver. LEMON needs integer weights; see [Weights](#weights).
 
 Otherwise, Kamui solves the linear programming (LP) relaxation, with $`k \in \mathbb{R}^{M}`$, first.
 For 2-D grids and planar meshes, $`A`$ is totally unimodular, so the LP optimum is already integral. The same is true of 3-D grids without a cyclical axis. Other inputs fall back to the integer program.
@@ -48,6 +48,8 @@ Large inputs are still computationally heavy; see [Performance and memory](#perf
 pip install kamui
 ```
 
+This also installs [pylmcf](https://github.com/michalsta/pylmcf), Python bindings for LEMON's network simplex under the Boost Software License, which Kamui uses wherever it applies.
+
 Kamui also provides [PUMA](https://ieeexplore.ieee.org/document/4099386), a fast and robust phase unwrapping algorithm based on graph cuts as an alternative.
 To install PUMA, run
 
@@ -57,14 +59,6 @@ pip install kamui[extra]
 
 However, it uses the original maxflow implementation by Vladimir Kolmogorov with GPL license.
 Please follow the licensing instruction in [PyMaxflow](http://pmneila.github.io/PyMaxflow/#indices-and-tables) if you use this version of Kamui.
-
-For much faster unwrapping of 2-D grids and planar meshes, install the min-cost-flow solver as well:
-
-```commandline
-pip install kamui[mcf]
-```
-
-It installs [pylmcf](https://github.com/michalsta/pylmcf), Python bindings for the network simplex of the [LEMON](https://lemon.cs.elte.hu/) graph library, under the Boost Software License. Kamui then uses it automatically wherever it applies.
 
 
 ## Usage
@@ -93,6 +87,8 @@ The reference pixel keeps its wrapped value. It defaults to the first pixel; cho
 ### Weights
 
 Per-pixel quality weights, such as InSAR coherence, tell the solver where corrections are cheap. The weights are rescaled linearly to $`[0.1, 1]`$, and each edge gets the mean of its two pixels; `merging_method="min"` or `"max"` change that. Edges that touch a NaN weight get weight 0.
+
+LEMON needs integer weights, and Kamui does not round them for you. The rescaled per-pixel weights above are fractional, so `unwrap_dimensional` solves them with HiGHS. To use LEMON with your own weights, pass integer per-edge weights to `unwrap_arbitrary`, for example `np.round(1000 * edge_weights)`. With `solver="lemon"`, fractional weights raise an error instead of falling back to HiGHS.
 
 ```python
 coherence = np.random.default_rng(0).uniform(0.2, 1.0, wrapped.shape)
@@ -153,7 +149,7 @@ Without `simplices`, `unwrap_arbitrary(psi, edges)` uses the edgelist formulatio
 
 | Solver | How to select it | Needs | Notes |
 | --- | --- | --- | --- |
-| Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `adaptive_weighting=False` makes every edge cost 1, and `weights` overrides both. With `kamui[mcf]`, 2-D grids and planar meshes are solved by LEMON; `solver="highs"` forces HiGHS, and `solver="lemon"` raises an error instead of falling back. Fractional weights are rounded at a resolution of $`10^{-6}`$ of the largest weight for LEMON. |
+| Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `adaptive_weighting=False` makes every edge cost 1, and `weights` overrides both. 2-D grids and planar meshes with integer weights, the defaults included, are solved by LEMON, and everything else by HiGHS. `solver="highs"` forces HiGHS, and `solver="lemon"` raises an error instead of falling back. |
 | Edgelist ILP | `use_edgelist=True`, or `unwrap_arbitrary(psi, edges)` | edges only | Uniform weights unless `weights` is given. |
 | PUMA | `method="gc"` | edges and `pip install kamui[extra]` | Minimizes a $`p`$-norm energy (options `p` and `max_jump`) and takes no weights. Currently slower than the ILP solvers on grids ([#26](https://github.com/yoyolicoris/kamui/issues/26)). GPL; see [Installation](#installation). |
 
@@ -207,7 +203,7 @@ Kamui expects a single connected graph with finite phase values. NaNs, or region
 
 `unwrap_dimensional` with default settings on noisy 2-D grids, measured on an Apple M1 Pro with SciPy 1.18 (HiGHS 1.12) and pylmcf 1.2.1:
 
-| Grid | HiGHS | LEMON (`kamui[mcf]`) |
+| Grid | HiGHS | LEMON |
 | --- | --- | --- |
 | 300×300 | 1.6 s, 0.7 GB | 0.35 s, 0.3 GB |
 | 600×600 | 9.8 s, 1.7 GB | 1.6 s, 0.8 GB |

@@ -176,7 +176,7 @@ def _delaunay_mesh(seed=0, n=150):
         "grid, cyclical axis 0",
         "grid, both axes cyclical",
         "Delaunay mesh",
-        "fractional weights",
+        "integer weights",
     ],
 )
 def test_calculate_k_lemon_matches_highs(case):
@@ -192,8 +192,8 @@ def test_calculate_k_lemon_matches_highs(case):
         n_vertices = 72
     differences = _wrapped_differences(edges, n_vertices, seed=1)
     weights = None
-    if case == "fractional weights":
-        weights = np.random.default_rng(2).uniform(0.1, 1.0, len(edges))
+    if case == "integer weights":
+        weights = np.random.default_rng(2).integers(1, 10, len(edges))
     k, info = calculate_k(edges, simplices, differences, weights=weights, return_info=True)
     _, reference = calculate_k(
         edges, simplices, differences, weights=weights, solver="highs", return_info=True
@@ -201,7 +201,7 @@ def test_calculate_k_lemon_matches_highs(case):
     assert info.solver == "lemon" and reference.solver == "highs"
     assert info.success and not info.ilp_fallback
     assert reference.fun > 0
-    assert info.fun == pytest.approx(reference.fun, rel=1e-5)
+    assert info.fun == pytest.approx(reference.fun)
     np.testing.assert_allclose(_loop_sums(edges, simplices, differences + k), 0, atol=1e-9)
 
 
@@ -256,14 +256,30 @@ def test_calculate_k_reports_an_infeasible_flow():
     assert calculate_k(edges, faces, differences, solver="highs") is None
 
 
-def test_calculate_k_lemon_requires_pylmcf(monkeypatch):
-    monkeypatch.setattr(core, "pylmcf", None)
-    edges, simplices = _triangle()
-    differences = np.array([0.4, 0.4, 0.3])
-    with pytest.raises(ImportError, match="kamui\\[mcf\\]"):
-        calculate_k(edges, simplices, differences, solver="lemon")
-    _, info = calculate_k(edges, simplices, differences, return_info=True)
+def test_calculate_k_leaves_fractional_weights_to_highs():
+    # LEMON needs integer costs, and kamui does not round weights itself: with
+    # solver="auto" fractional weights go to HiGHS, with "lemon" they raise
+    edges, simplices = get_2d_edges_and_simplices((6, 6))
+    differences = _wrapped_differences(edges, 36, seed=4)
+    weights = np.random.default_rng(5).uniform(0.1, 1.0, len(edges))
+    k, info = calculate_k(edges, simplices, differences, weights=weights, return_info=True)
     assert info.solver == "highs"
+    np.testing.assert_allclose(_loop_sums(edges, simplices, differences + k), 0, atol=1e-9)
+    with pytest.raises(ValueError, match="integer weights"):
+        calculate_k(edges, simplices, differences, weights=weights, solver="lemon")
+    # whole numbers stored as floats are integer weights
+    _, info = calculate_k(
+        edges, simplices, differences, weights=np.round(weights * 10), return_info=True
+    )
+    assert info.solver == "lemon"
+
+
+def test_calculate_k_lemon_rejects_negative_weights():
+    edges, simplices = _triangle()
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_k(
+            edges, simplices, np.array([0.4, 0.4, 0.3]), weights=-np.ones(3), solver="lemon"
+        )
 
 
 def test_calculate_k_rejects_unknown_solver():
