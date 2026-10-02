@@ -1,9 +1,15 @@
 import numpy as np
 import pytest
+from scipy.optimize import OptimizeResult
 from scipy.spatial import Delaunay
 
 import kamui
-from kamui import unwrap_arbitrary, unwrap_dimensional, wrap_difference
+from kamui import (
+    get_2d_edges_and_simplices,
+    unwrap_arbitrary,
+    unwrap_dimensional,
+    wrap_difference,
+)
 
 
 def test_version_wired():
@@ -127,13 +133,13 @@ def test_unwrap_arbitrary_ilp_edgelist():
 
 
 def test_unwrap_arbitrary_ilp_edgelist_infeasible(monkeypatch):
-    monkeypatch.setattr(kamui, "calculate_m", lambda *a, **k: None)
+    monkeypatch.setattr(kamui, "calculate_m", lambda *a, **k: (None, OptimizeResult(success=False)))
     result = unwrap_arbitrary(np.zeros(3), np.array([[0, 1], [1, 2]]), None)
     assert result is None
 
 
 def test_unwrap_arbitrary_ilp_simplex_infeasible(monkeypatch):
-    monkeypatch.setattr(kamui, "calculate_k", lambda *a, **k: None)
+    monkeypatch.setattr(kamui, "calculate_k", lambda *a, **k: (None, OptimizeResult(success=False)))
     edges = np.array([[0, 1], [1, 2], [2, 0]])
     result = unwrap_arbitrary(np.zeros(3), edges, [[0, 1, 2]])
     assert result is None
@@ -168,6 +174,54 @@ def test_unwrap_arbitrary_point_cloud_is_exact_in_any_order():
         edges, simplices = _delaunay_graph(p)
         result = unwrap_arbitrary(psi, edges, simplices)
         np.testing.assert_allclose(result - result[0], true - true[0], atol=1e-6)
+
+
+def test_unwrap_arbitrary_reports_matching_costs_on_both_ilp_paths():
+    # With uniform weights, the simplex and edgelist programs minimize the
+    # same cost over the same corrections, so their optima must agree
+    # (the comparison asked for in #9).
+    rng = np.random.default_rng(3)
+    true = _ramp_2d(12, 12) + rng.normal(0, 1.3, (12, 12))
+    psi = wrap_difference(true).ravel()
+    edges, simplices = get_2d_edges_and_simplices((12, 12))
+    with_cycles, info_k = unwrap_arbitrary(
+        psi, edges, simplices, adaptive_weighting=False, return_info=True
+    )
+    edgelist, info_m = unwrap_arbitrary(psi, edges, None, return_info=True)
+    assert info_k.success and info_m.success
+    assert info_k.fun > 0
+    assert info_k.fun == pytest.approx(info_m.fun)
+    np.testing.assert_allclose(wrap_difference(with_cycles - psi), 0, atol=1e-9)
+    np.testing.assert_allclose(wrap_difference(edgelist - psi), 0, atol=1e-9)
+
+
+def test_unwrap_arbitrary_reports_failure(monkeypatch):
+    monkeypatch.setattr(kamui, "calculate_k", lambda *a, **k: (None, OptimizeResult(success=False)))
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+    result, info = unwrap_arbitrary(np.zeros(3), edges, [[0, 1, 2]], return_info=True)
+    assert result is None and not info.success
+
+
+def test_unwrap_arbitrary_gc_reports_energy():
+    result, info = unwrap_arbitrary(
+        np.array([0.0, 1.0]), np.array([[0, 1]]), method="gc", return_info=True
+    )
+    np.testing.assert_allclose(result, [0.0, 1.0], atol=1e-9)
+    assert info.success and info.nit >= 1
+
+
+def test_unwrap_dimensional_reports_info():
+    true = _ramp_2d()
+    result, info = unwrap_dimensional(wrap_difference(true), return_info=True)
+    assert result.shape == true.shape
+    assert info.success and not info.ilp_fallback
+    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+
+
+def test_unwrap_dimensional_reports_failure(monkeypatch):
+    failed = OptimizeResult(success=False)
+    monkeypatch.setattr(kamui, "unwrap_arbitrary", lambda *a, **k: (None, failed))
+    assert unwrap_dimensional(np.zeros((4, 4)), return_info=True) == (None, failed)
 
 
 def test_unwrap_arbitrary_gc():

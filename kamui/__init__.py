@@ -20,6 +20,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import numpy as np
+from scipy.optimize import OptimizeResult
 
 from .core import calculate_k, calculate_m, integrate, puma
 from .utils import (
@@ -73,8 +74,10 @@ def unwrap_dimensional(
     cyclical_axis: int | tuple[int, ...] = (),
     merging_method: str = "mean",
     weights: np.ndarray | None = None,
+    *,
+    return_info: bool = False,
     **kwargs: Any,
-) -> np.ndarray | None:
+) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
     """Unwrap the phase of a 2-D or 3-D array.
 
     Parameters
@@ -95,14 +98,19 @@ def unwrap_dimensional(
         Weights defining the 'goodness' of value at each vertex.
         Shape must match the shape of x. Only the ILP solvers
         (``method="ilp"``) use weights. Defaults to None.
+    return_info : bool, optional
+        Also return the solver report. Defaults to False.
     **kwargs
         Other arguments passed to :func:`kamui.unwrap_arbitrary`.
 
     Returns
     -------
-    np.ndarray or None
+    unwrapped : np.ndarray or None
         The unwrapped phase of the same shape as x, or None if the
         underlying solver finds no optimal solution.
+    info : scipy.optimize.OptimizeResult
+        Only returned if ``return_info`` is True; see
+        :func:`kamui.unwrap_arbitrary`.
     """
     if start_pixel is None:
         start_pixel = (0,) * x.ndim
@@ -128,16 +136,18 @@ def unwrap_dimensional(
         # convert per-vertex weights to per-edge weights; forward them only
         # when given, since puma (method="gc") takes no weights argument
         kwargs["weights"] = prepare_weights(weights, edges=edges, merging_method=merging_method)
-    result = unwrap_arbitrary(
+    out = unwrap_arbitrary(
         psi,
         edges,
         None if use_edgelist else simplices,
         start_i=start_i,
+        return_info=return_info,
         **kwargs,
     )
-    if result is None:
-        return None
-    return result.reshape(x.shape)
+    result, info = out if return_info else (out, None)
+    if result is not None:
+        result = result.reshape(x.shape)
+    return (result, info) if return_info else result
 
 
 def unwrap_arbitrary(
@@ -147,8 +157,10 @@ def unwrap_arbitrary(
     method: str = "ilp",
     period: float = 2 * np.pi,
     start_i: int = 0,
+    *,
+    return_info: bool = False,
     **kwargs: Any,
-) -> np.ndarray | None:
+) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
     """Unwrap the phase of arbitrary data.
 
     Parameters
@@ -171,45 +183,52 @@ def unwrap_arbitrary(
         The period of the phase. Defaults to ``2 * np.pi``.
     start_i : int, optional
         The index of the reference vertex to start unwrapping. Defaults to 0.
+    return_info : bool, optional
+        Also return the solver report. Defaults to False.
     **kwargs
         Other arguments passed to the solver.
 
     Returns
     -------
-    np.ndarray or None
+    unwrapped : np.ndarray or None
         The unwrapped phase of the same shape as psi, or None if the
         underlying solver finds no optimal solution.
+    info : scipy.optimize.OptimizeResult
+        Only returned if ``return_info`` is True. For ``method="ilp"`` it
+        is the report of :func:`kamui.core.calculate_k` (with simplices) or
+        :func:`kamui.core.calculate_m` (without): ``fun`` is the weighted
+        L1 cost, ``success``, ``status`` and ``message`` come from HiGHS,
+        and ``ilp_fallback`` tells whether the integer program had to be
+        solved. For ``method="gc"`` it is the report of
+        :func:`kamui.core.puma`, with the final energy as ``fun``.
     """
     if method == "gc":
-        m = puma(psi / period, edges, **kwargs)
-        m -= m[start_i]
-        result = m * period + psi
+        m, info = puma(psi / period, edges, return_info=True, **kwargs)
+        result = (m - m[start_i]) * period + psi
     elif method == "ilp":
         if simplices is None:
-            m = calculate_m(
+            m, info = calculate_m(
                 edges,
                 np.round((psi[edges[:, 1]] - psi[edges[:, 0]]) / period).astype(np.int64),
+                return_info=True,
                 **kwargs,
             )
-            if m is None:
-                return None
-            m -= m[start_i]
-            result = m * period + psi
+            result = None if m is None else (m - m[start_i]) * period + psi
         else:
             diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
-            k = calculate_k(edges, simplices, diff / period, **kwargs)
+            k, info = calculate_k(edges, simplices, diff / period, return_info=True, **kwargs)
             if k is None:
-                return None
-            correct_diff = diff + k * period
-
-            result = (
-                integrate(
-                    np.concatenate((edges, np.flip(edges, 1)), axis=0),
-                    np.concatenate((correct_diff, -correct_diff), axis=0),
-                    start_i=start_i,
+                result = None
+            else:
+                correct_diff = diff + k * period
+                result = (
+                    integrate(
+                        np.concatenate((edges, np.flip(edges, 1)), axis=0),
+                        np.concatenate((correct_diff, -correct_diff), axis=0),
+                        start_i=start_i,
+                    )
+                    + psi[start_i]
                 )
-                + psi[start_i]
-            )
     else:
         raise ValueError("method must be 'gc' or 'ilp'")
-    return result
+    return (result, info) if return_info else result

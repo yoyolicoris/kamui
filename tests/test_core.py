@@ -9,6 +9,11 @@ from kamui.core import calculate_k, calculate_m, integrate, puma
 from kamui.utils import get_2d_edges_and_simplices
 
 
+def _failed_solve(x, status=2, message="The problem is infeasible."):
+    # stand-in for a linprog result that HiGHS did not report as optimal
+    return SimpleNamespace(x=x, success=False, fun=None, status=status, message=message)
+
+
 def test_integrate_chain():
     # integrate is called with edges in both directions (as in
     # unwrap_arbitrary), so every vertex appears as a source
@@ -118,9 +123,23 @@ def test_calculate_k_falls_back_to_ilp_on_fractional_lp(monkeypatch):
     assert weights @ np.abs(k) == 10
 
 
+def test_calculate_k_reports_the_ilp_fallback():
+    # the K4 program above: the LP optimum is fractional, so the report must
+    # say the integer program was solved, at its optimal cost of 10
+    edges = np.array([[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]])
+    psi = np.array([0.0, 0.49, -0.49, 0.0])
+    differences = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period=1.0)
+    weights = np.array([1.0, 10.0, 10.0, 10.0, 10.0, 1.0])
+    simplices = [[0, 1, 2, 3], [0, 1, 3, 2]]
+    k, info = calculate_k(edges, simplices, differences, weights=weights, return_info=True)
+    assert info.success and info.ilp_fallback
+    assert info.fun == pytest.approx(10.0)
+    assert info.fun == pytest.approx(weights @ np.abs(k))
+
+
 def test_calculate_k_returns_none_when_infeasible(monkeypatch):
     edges, simplices = _triangle()
-    monkeypatch.setattr(core, "linprog", lambda *a, **k: SimpleNamespace(x=None, success=False))
+    monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
     assert calculate_k(edges, simplices, np.array([0.1, 0.1, -0.2])) is None
 
 
@@ -152,15 +171,30 @@ def test_calculate_m_rejects_non_integer_differences():
         calculate_m(np.array([[0, 1]]), np.array([0.5]))
 
 
+def test_calculate_m_reports_lp_solution():
+    edges = np.array([[0, 1], [1, 2]])
+    m, info = calculate_m(edges, np.array([1, -1], dtype=np.int64), return_info=True)
+    np.testing.assert_array_equal(m[edges[:, 0]] - m[edges[:, 1]], [1, -1])
+    assert info.success and not info.ilp_fallback
+    assert info.fun == pytest.approx(0.0)
+
+
+def test_calculate_m_reports_failure(monkeypatch):
+    monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
+    m, info = calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), return_info=True)
+    assert m is None
+    assert not info.success and info.status == 2 and "infeasible" in info.message
+
+
 def test_calculate_m_rejects_non_optimal_solution(monkeypatch):
     # e.g. a time limit: HiGHS returns a point but does not report success
-    result = SimpleNamespace(x=np.zeros(4), success=False)
+    result = _failed_solve(x=np.zeros(4), status=1, message="Time limit reached.")
     monkeypatch.setattr(core, "linprog", lambda *a, **k: result)
     assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
 
 
 def test_calculate_m_returns_none_when_infeasible(monkeypatch):
-    monkeypatch.setattr(core, "linprog", lambda *a, **k: SimpleNamespace(x=None, success=False))
+    monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
     assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
 
 
@@ -186,6 +220,15 @@ def test_puma_accepts_energy_decrease():
     before = np.sum(np.abs(psi[j] - psi[i]))
     after = np.sum(np.abs(k[j] - k[i] - psi[i] + psi[j]))
     assert after < before
+
+
+def test_puma_reports_final_energy():
+    psi = np.array([0.0, -0.4, 0.3, -0.2])
+    edges = np.array([[0, 1], [1, 2], [2, 3]])
+    k, info = puma(psi, edges, return_info=True)
+    i, j = edges[:, 0], edges[:, 1]
+    assert info.fun == pytest.approx(np.sum(np.abs(k[j] - k[i] - psi[i] + psi[j])))
+    assert info.success and info.nit >= 2
 
 
 def test_puma_requires_pymaxflow(monkeypatch):
