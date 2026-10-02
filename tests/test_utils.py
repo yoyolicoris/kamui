@@ -47,6 +47,22 @@ def test_2d_short_axes_are_already_cyclical():
     _assert_valid_graph(edges, simplices, 10)
 
 
+@pytest.mark.parametrize("cyclical_axis", [(), 0, 1, (0, 1)])
+def test_2d_cells_share_edges_in_opposite_directions(cyclical_axis):
+    # A consistent orientation makes the cycle matrix a network matrix, which
+    # the min-cost-flow solver relies on: every edge on two cells must be
+    # traversed forwards by one and backwards by the other.
+    edges, simplices = get_2d_edges_and_simplices((5, 6), cyclical_axis=cyclical_axis)
+    directions = {}
+    for simplex in simplices:
+        for u, v in zip(simplex, simplex[1:] + simplex[:1]):
+            key, sign = ((u, v), 1) if u < v else ((v, u), -1)
+            directions.setdefault(key, []).append(sign)
+    shared = [signs for signs in directions.values() if len(signs) == 2]
+    assert shared
+    assert all(sorted(signs) == [-1, 1] for signs in shared)
+
+
 def test_3d_counts_and_validity():
     edges, simplices = get_3d_edges_and_simplices((3, 4, 5))
     assert len(edges) == 2 * 4 * 5 + 3 * 3 * 5 + 3 * 4 * 4

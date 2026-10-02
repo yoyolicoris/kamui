@@ -197,9 +197,11 @@ def unwrap_arbitrary(
         Only returned if ``return_info`` is True. For ``method="ilp"`` it
         is the report of :func:`kamui.core.calculate_k` (with simplices) or
         :func:`kamui.core.calculate_m` (without): ``fun`` is the weighted
-        L1 cost, ``success``, ``status`` and ``message`` come from HiGHS,
-        and ``ilp_fallback`` tells whether the integer program had to be
-        solved. For ``method="gc"`` it is the report of
+        L1 cost, ``success``, ``status`` and ``message`` come from the
+        solver, which ``solver`` names ("lemon" or "highs"; pass
+        ``solver=`` through ``**kwargs`` to choose it), and
+        ``ilp_fallback`` tells whether HiGHS had to solve the integer
+        program. For ``method="gc"`` it is the report of
         :func:`kamui.core.puma`, with the final energy as ``fun``.
     """
     if method == "gc":

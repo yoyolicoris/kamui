@@ -18,6 +18,10 @@
 #
 # python_min comes from conda-forge's global pinning (CFEP-25) and already sits
 # above requires-python, so it is not overridden here.
+#
+# Blocked on pylmcf: kamui requires it, but neither pylmcf nor its
+# nanobind-backend dependency is on conda-forge yet, so both need recipes
+# (staged-recipes) before this one can build.
 
 schema_version: 1
 
@@ -48,6 +52,7 @@ requirements:
     - python >=${{ python_min }}
     - numpy >=2
     - scipy >=1.13
+    - pylmcf >=1.2
 
 tests:
   - python:

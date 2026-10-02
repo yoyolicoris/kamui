@@ -2,11 +2,12 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from scipy.spatial import Delaunay
 
 import kamui.core as core
 from kamui import wrap_difference
 from kamui.core import calculate_k, calculate_m, integrate, puma
-from kamui.utils import get_2d_edges_and_simplices
+from kamui.utils import get_2d_edges_and_simplices, get_3d_edges_and_simplices
 
 
 def _failed_solve(x, status=2, message="The problem is infeasible."):
@@ -101,7 +102,7 @@ def test_calculate_k_solves_grid_as_plain_lp(monkeypatch):
     edges, simplices = get_2d_edges_and_simplices((6, 6))
     psi = np.random.default_rng(0).uniform(-np.pi, np.pi, 36)
     differences = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]]) / (2 * np.pi)
-    k = calculate_k(edges, simplices, differences)
+    k = calculate_k(edges, simplices, differences, solver="highs")
     assert calls == [None]
     assert np.abs(k).sum() > 0
 
@@ -140,7 +141,151 @@ def test_calculate_k_reports_the_ilp_fallback():
 def test_calculate_k_returns_none_when_infeasible(monkeypatch):
     edges, simplices = _triangle()
     monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
-    assert calculate_k(edges, simplices, np.array([0.1, 0.1, -0.2])) is None
+    assert calculate_k(edges, simplices, np.array([0.1, 0.1, -0.2]), solver="highs") is None
+
+
+def _loop_sums(edges, simplices, values):
+    # sum of the oriented edge values around each simplex
+    index = {tuple(e): i for i, e in enumerate(edges.tolist())}
+    sums = []
+    for simplex in simplices:
+        simplex = list(simplex)
+        total = 0.0
+        for u, v in zip(simplex[-1:] + simplex[:-1], simplex):
+            total += values[index[(u, v)]] if (u, v) in index else -values[index[(v, u)]]
+        sums.append(total)
+    return np.array(sums)
+
+
+def _wrapped_differences(edges, n_vertices, seed):
+    psi = np.random.default_rng(seed).uniform(-np.pi, np.pi, n_vertices)
+    return wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]]) / (2 * np.pi)
+
+
+def _delaunay_mesh(seed=0, n=150):
+    points = np.random.default_rng(seed).uniform(0, 1, (n, 2))
+    triangles = Delaunay(points).simplices
+    pairs = np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]])
+    return np.unique(np.sort(pairs, axis=1), axis=0), triangles.tolist(), n
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "grid",
+        "grid, cyclical axis 0",
+        "grid, both axes cyclical",
+        "Delaunay mesh",
+        "integer weights",
+    ],
+)
+def test_calculate_k_lemon_matches_highs(case):
+    # LEMON solves the planar programs as min-cost flows; HiGHS must reach the
+    # same optimal cost, and LEMON's k must close every loop.
+    if case == "Delaunay mesh":
+        edges, simplices, n_vertices = _delaunay_mesh()
+    else:
+        cyclical_axis = {"grid, cyclical axis 0": 0, "grid, both axes cyclical": (0, 1)}.get(
+            case, ()
+        )
+        edges, simplices = get_2d_edges_and_simplices((9, 8), cyclical_axis=cyclical_axis)
+        n_vertices = 72
+    differences = _wrapped_differences(edges, n_vertices, seed=1)
+    weights = None
+    if case == "integer weights":
+        weights = np.random.default_rng(2).integers(1, 10, len(edges))
+    k, info = calculate_k(edges, simplices, differences, weights=weights, return_info=True)
+    _, reference = calculate_k(
+        edges, simplices, differences, weights=weights, solver="highs", return_info=True
+    )
+    assert info.solver == "lemon" and reference.solver == "highs"
+    assert info.success and not info.ilp_fallback
+    assert reference.fun > 0
+    assert info.fun == pytest.approx(reference.fun)
+    np.testing.assert_allclose(_loop_sums(edges, simplices, differences + k), 0, atol=1e-9)
+
+
+def test_calculate_k_uses_highs_when_cycles_are_not_a_network():
+    # an interior edge of a 3-D grid lies on four cycles
+    edges, simplices = get_3d_edges_and_simplices((3, 3, 3))
+    differences = _wrapped_differences(edges, 27, seed=3)
+    k, info = calculate_k(edges, simplices, differences, return_info=True)
+    assert info.solver == "highs"
+    np.testing.assert_allclose(_loop_sums(edges, simplices, differences + k), 0, atol=1e-9)
+    with pytest.raises(ValueError, match="at most two"):
+        calculate_k(edges, simplices, differences, solver="lemon")
+
+
+def test_calculate_k_uses_highs_for_a_cycle_that_repeats_an_edge():
+    # traversing the triangle twice puts a 2 in the cycle matrix
+    edges, _ = _triangle()
+    _, info = calculate_k(edges, [[0, 1, 2, 0, 1, 2]], np.array([0.4, 0.4, 0.3]), return_info=True)
+    assert info.solver == "highs"
+
+
+def test_calculate_k_uses_highs_for_negative_weights():
+    edges, simplices = _triangle()
+    k, info = calculate_k(
+        edges, simplices, np.array([0.4, 0.4, 0.3]), weights=-np.ones(3), return_info=True
+    )
+    assert info.solver == "highs"
+    assert k is None  # unbounded
+
+
+def test_calculate_k_without_cycles_keeps_k_at_zero():
+    k, info = calculate_k(np.array([[0, 1], [1, 2]]), [], np.array([0.4, -0.3]), return_info=True)
+    assert info.solver == "lemon"
+    np.testing.assert_array_equal(k, [0, 0])
+
+
+def test_calculate_k_reports_an_infeasible_flow():
+    # The four faces of a tetrahedron close up, so no edge reaches the outside.
+    # These (not wrapped) differences round to face residues that do not sum
+    # to zero, so no k satisfies the constraints.
+    edges = np.array([[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]])
+    faces = [[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]]
+    face_matrix = np.zeros((4, 6))
+    index = {tuple(e): i for i, e in enumerate(edges.tolist())}
+    for row, face in enumerate(faces):
+        for u, v in zip(face[-1:] + face[:-1], face):
+            face_matrix[row, index.get((u, v), index.get((v, u)))] += 1 if (u, v) in index else -1
+    differences = np.linalg.lstsq(face_matrix, np.array([0.6, -0.3, -0.3, 0.0]), rcond=None)[0]
+    k, info = calculate_k(edges, faces, differences, return_info=True)
+    assert k is None
+    assert info.solver == "lemon" and not info.success and "INFEASIBLE" in info.message
+    assert calculate_k(edges, faces, differences, solver="highs") is None
+
+
+def test_calculate_k_leaves_fractional_weights_to_highs():
+    # LEMON needs integer costs, and kamui does not round weights itself: with
+    # solver="auto" fractional weights go to HiGHS, with "lemon" they raise
+    edges, simplices = get_2d_edges_and_simplices((6, 6))
+    differences = _wrapped_differences(edges, 36, seed=4)
+    weights = np.random.default_rng(5).uniform(0.1, 1.0, len(edges))
+    k, info = calculate_k(edges, simplices, differences, weights=weights, return_info=True)
+    assert info.solver == "highs"
+    np.testing.assert_allclose(_loop_sums(edges, simplices, differences + k), 0, atol=1e-9)
+    with pytest.raises(ValueError, match="integer weights"):
+        calculate_k(edges, simplices, differences, weights=weights, solver="lemon")
+    # whole numbers stored as floats are integer weights
+    _, info = calculate_k(
+        edges, simplices, differences, weights=np.round(weights * 10), return_info=True
+    )
+    assert info.solver == "lemon"
+
+
+def test_calculate_k_lemon_rejects_negative_weights():
+    edges, simplices = _triangle()
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_k(
+            edges, simplices, np.array([0.4, 0.4, 0.3]), weights=-np.ones(3), solver="lemon"
+        )
+
+
+def test_calculate_k_rejects_unknown_solver():
+    edges, simplices = _triangle()
+    with pytest.raises(ValueError, match="solver must be"):
+        calculate_k(edges, simplices, np.array([0.4, 0.4, 0.3]), solver="cplex")
 
 
 def test_calculate_m_chain():
