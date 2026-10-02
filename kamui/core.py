@@ -18,6 +18,11 @@ try:
 except ImportError:  # pragma: no cover (PyMaxflow is always installed in the test env)
     maxflow = None
 
+try:
+    import pylmcf
+except ImportError:  # pragma: no cover (pylmcf is always installed in the test env)
+    pylmcf = None
+
 __all__ = ["integrate", "calculate_k", "calculate_m", "puma"]
 
 
@@ -45,8 +50,79 @@ def _solve_integer_program(
         status=res.status,
         message=res.message,
         ilp_fallback=ilp_fallback,
+        solver="highs",
     )
     return (np.round(res.x) if res.success else None), info
+
+
+# Resolution, relative to the largest weight, at which fractional edge weights
+# are rounded to the integer costs that LEMON requires.
+_COST_RESOLUTION = 10**6
+
+
+def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray] | None:
+    """Return the dual-graph arc of each edge, or None if V is not a network matrix.
+
+    Each cycle becomes a node, and node ``N`` stands for the outside of all
+    cycles. Edge ``e`` runs from the cycle that traverses it forwards
+    (``V[c, e] == 1``) to the one that traverses it backwards (``-1``), or to
+    node ``N`` if only one cycle contains it. That needs every edge on at most
+    two cycles, in opposite directions, as on 2-D grids and planar meshes.
+    Edges on no cycle get no arc (-1).
+    """
+    N, M = V.shape
+    V = V.tocsc()
+    V.eliminate_zeros()
+    count = np.diff(V.indptr)
+    if count.max(initial=0) > 2 or np.any(np.abs(V.data) != 1):
+        return None
+    edge = np.flatnonzero(count > 0)
+    first = V.indptr[edge]
+    r1, s1 = V.indices[first].astype(np.int64), V.data[first]
+    r2, s2 = np.full(edge.size, N, dtype=np.int64), -s1
+    two = count[edge] == 2
+    r2[two], s2[two] = V.indices[first[two] + 1], V.data[first[two] + 1]
+    if np.any(s1 == s2):  # two cycles traverse the edge in the same direction
+        return None
+    tail = np.full(M, -1, dtype=np.int64)
+    head = np.full(M, -1, dtype=np.int64)
+    tail[edge] = np.where(s1 > 0, r1, r2)
+    head[edge] = np.where(s1 > 0, r2, r1)
+    return tail, head
+
+
+def _solve_min_cost_flow(
+    tail: np.ndarray, head: np.ndarray, b: np.ndarray, w: np.ndarray
+) -> np.ndarray:
+    """Solve ``min w @ |k|`` subject to ``V k == b`` as a min-cost flow with LEMON.
+
+    ``tail`` and ``head`` are the dual-graph arcs from `_dual_graph_arcs`, and
+    ``k[e]`` is the flow from tail to head minus the flow back. Edges without
+    an arc keep ``k = 0``. Raises RuntimeError if the flow is infeasible.
+    """
+    k = np.zeros(tail.size, dtype=np.int64)
+    edge = np.flatnonzero(tail >= 0)
+    if edge.size == 0:
+        return k
+    cost = w[edge]
+    if not np.array_equal(cost, np.round(cost)):
+        cost = cost * (_COST_RESOLUTION / cost.max())
+    cost = np.round(cost).astype(np.int64)
+    starts = np.concatenate((tail[edge], head[edge]))
+    ends = np.concatenate((head[edge], tail[edge]))
+    order = np.lexsort((ends, starts))  # pylmcf wants arcs sorted by (start, end)
+    supply = np.append(b, -b.sum()).astype(np.int64)
+    graph = pylmcf.Graph(len(supply), edge_starts=starts[order], edge_ends=ends[order])
+    graph.set_node_supply(supply)
+    graph.set_edge_costs(np.tile(cost, 2)[order])
+    # an optimal flow never carries more than the total supply on any arc
+    capacity = np.abs(supply).sum() // 2 + 1
+    graph.set_edge_capacities(np.full(starts.size, capacity, dtype=np.int64))
+    graph.solve()
+    flow = np.empty(starts.size, dtype=np.int64)
+    flow[order] = graph.result()
+    k[edge] = flow[: edge.size] - flow[edge.size :]
+    return k
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
@@ -102,6 +178,7 @@ def calculate_k(
     weights: np.ndarray | None = None,
     adaptive_weighting: bool = True,
     *,
+    solver: str = "auto",
     return_info: bool = False,
 ) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
     """Solve per-edge integer ambiguities on elementary cycles.
@@ -134,21 +211,42 @@ def calculate_k(
     adaptive_weighting : bool, optional
         Weight edges by incident zero-residue simplex counts.
         Defaults to True.
+    solver : {"auto", "highs", "lemon"}, optional
+        "lemon" solves the program as a min-cost flow with LEMON's network
+        simplex, through pylmcf (``pip install kamui[mcf]``). It needs
+        non-negative weights and every edge on at most two cycles,
+        traversed in opposite directions, as on 2-D grids and planar
+        meshes; fractional weights are rounded to integers at a resolution
+        of 1e-6 of the largest weight. "highs" solves it as a linear
+        program with HiGHS. "auto" uses LEMON when pylmcf is installed and
+        the program allows it, and HiGHS otherwise. Defaults to "auto".
     return_info : bool, optional
         Also return the solver report. Defaults to False.
 
     Returns
     -------
     k : (M,) np.ndarray or None
-        Integer ambiguity per edge, or None if HiGHS finds no optimal
+        Integer ambiguity per edge, or None if the solver finds no optimal
         solution, e.g. because the program is infeasible.
     info : scipy.optimize.OptimizeResult
         Only returned if ``return_info`` is True. ``fun`` is the weighted
         L1 cost of ``k`` (None without a solution); ``success``,
-        ``status`` and ``message`` come from HiGHS; ``ilp_fallback`` is
-        True when the LP optimum was fractional and the integer program
-        was solved instead.
+        ``status`` and ``message`` come from the solver, which ``solver``
+        names ("lemon" or "highs"); ``ilp_fallback`` is True when the LP
+        optimum was fractional and HiGHS solved the integer program
+        instead.
+
+    Raises
+    ------
+    ImportError
+        If ``solver="lemon"`` and pylmcf is not installed.
+    ValueError
+        If the edges are not unique, the simplices use an edge not in
+        ``edges``, ``solver`` is unknown, or ``solver="lemon"`` and the
+        program is not a min-cost flow.
     """
+    if solver not in ("auto", "highs", "lemon"):
+        raise ValueError(f"solver must be 'auto', 'highs' or 'lemon'; got {solver!r}")
     M, N = edges.shape[0], len(simplices)
 
     edge_dict = {tuple(x): i for i, x in enumerate(edges)}
@@ -200,6 +298,35 @@ def calculate_k(
             c = np.ones((M * 2,), dtype=np.int64)
     else:
         c = np.tile(weights, 2)
+
+    arcs = None
+    if solver != "highs" and pylmcf is not None and np.min(c, initial=0) >= 0:
+        arcs = _dual_graph_arcs(V)
+    if solver == "lemon" and arcs is None:
+        if pylmcf is None:
+            raise ImportError(
+                "solver='lemon' requires pylmcf; install with `pip install kamui[mcf]`"
+            )
+        raise ValueError(
+            "solver='lemon' needs non-negative weights and every edge on at most two "
+            "cycles, traversed in opposite directions"
+        )
+    if arcs is not None:
+        w = np.asarray(c[:M], dtype=np.float64)
+        try:
+            k = _solve_min_cost_flow(*arcs, b_eq, w)
+        except RuntimeError as err:
+            k, info = None, OptimizeResult(fun=None, success=False, status=2, message=str(err))
+        else:
+            info = OptimizeResult(
+                fun=float(w @ np.abs(k)),
+                success=True,
+                status=0,
+                message="Optimal min-cost flow found by LEMON's network simplex.",
+            )
+        info.update(ilp_fallback=False, solver="lemon")
+        return (k, info) if return_info else k
+
     x, info = _solve_integer_program(c, A_eq, b_eq)
     k = None if x is None else (x[:M] - x[M:]).astype(np.int64)
     return (k, info) if return_info else k
@@ -241,9 +368,9 @@ def calculate_m(
     info : scipy.optimize.OptimizeResult
         Only returned if ``return_info`` is True. ``fun`` is the weighted
         L1 norm of the slacks (None without a solution); ``success``,
-        ``status`` and ``message`` come from HiGHS; ``ilp_fallback`` is
-        True when the LP optimum was fractional and the integer program
-        was solved instead.
+        ``status`` and ``message`` come from HiGHS, and ``solver`` is
+        "highs"; ``ilp_fallback`` is True when the LP optimum was
+        fractional and the integer program was solved instead.
     """
     if not np.issubdtype(differences.dtype, np.integer):
         raise TypeError(f"differences must have an integer dtype; got {differences.dtype}")

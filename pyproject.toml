@@ -36,6 +36,8 @@ dependencies = ["numpy>=2", "scipy>=1.13"]
 [project.optional-dependencies]
 # Keep the existing extra name: the README documents `pip install kamui[extra]`.
 extra = ["PyMaxflow"]
+# LEMON's network simplex, which solves 2-D and planar programs as min-cost flows.
+mcf = ["pylmcf>=1.2"]
 
 [project.urls]
 Homepage = "https://github.com/yoyolicoris/kamui"

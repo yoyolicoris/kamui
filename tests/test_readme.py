@@ -11,4 +11,4 @@ def test_readme_examples_run():
     assert blocks
     namespace = {}
     for number, block in enumerate(blocks, start=1):
-        exec(compile(block, f"README.md example {number}", "exec"), namespace)
+        exec(compile(block, f"<README.md example {number}>", "exec"), namespace)
