@@ -54,14 +54,14 @@ def _solve_dual_m(
     the sign flip). Returns None unless HiGHS reports an optimal solution.
     """
     res = linprog(
-        c=-differences.astype(np.float64),
+        c=differences.astype(np.float64),
         A_ub=B.T,
         b_ub=np.zeros(B.shape[1]),
         bounds=np.stack([-weights, weights], axis=1),
     )
     if not res.success:
         return None
-    return -res.ineqlin.marginals
+    return res.ineqlin.marginals
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
