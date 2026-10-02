@@ -207,7 +207,7 @@ def calculate_m(
     edges : (M, 2) np.ndarray
         Array of edges.
     differences : (M,) np.ndarray
-        Quantized differences; must have int64 dtype.
+        Quantized differences, of any integer dtype.
     weights : (M,) np.ndarray, optional
         Per-edge weights. Defaults to uniform weights.
 
@@ -217,7 +217,8 @@ def calculate_m(
         Integer offset per vertex, or None if HiGHS finds no optimal
         solution, e.g. because the program is infeasible.
     """
-    assert differences.dtype == np.int64, "differences must be int"
+    if not np.issubdtype(differences.dtype, np.integer):
+        raise TypeError(f"differences must have an integer dtype; got {differences.dtype}")
     M = edges.shape[0]
     N = np.max(edges) + 1
 

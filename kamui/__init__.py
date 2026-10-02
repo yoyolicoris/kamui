@@ -106,7 +106,11 @@ def unwrap_dimensional(
     """
     if start_pixel is None:
         start_pixel = (0,) * x.ndim
-    assert x.ndim == len(start_pixel), "start_pixel must have the same dimension as x"
+    if len(start_pixel) != x.ndim:
+        raise ValueError(
+            f"start_pixel needs one index per dimension of x: got {len(start_pixel)} "
+            f"for a {x.ndim}-D array"
+        )
 
     start_i = 0
     for i, s in enumerate(start_pixel):

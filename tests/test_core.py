@@ -140,8 +140,15 @@ def test_calculate_m_accepts_weights():
     np.testing.assert_array_equal(m[edges[:, 0]] - m[edges[:, 1]], differences)
 
 
+def test_calculate_m_accepts_any_integer_dtype():
+    edges = np.array([[0, 1], [1, 2]])
+    differences = np.array([1, -1], dtype=np.int32)
+    m = calculate_m(edges, differences)
+    np.testing.assert_array_equal(m[edges[:, 0]] - m[edges[:, 1]], differences)
+
+
 def test_calculate_m_rejects_non_integer_differences():
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError, match="integer dtype"):
         calculate_m(np.array([[0, 1]]), np.array([0.5]))
 
 

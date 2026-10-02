@@ -96,6 +96,11 @@ def test_unwrap_dimensional_3d_ramp_on_larger_grid():
     np.testing.assert_allclose(result - result[0, 0, 0], true - true[0, 0, 0], atol=1e-6)
 
 
+def test_unwrap_dimensional_rejects_mismatched_start_pixel():
+    with pytest.raises(ValueError, match="one index per dimension"):
+        unwrap_dimensional(np.zeros((4, 4)), start_pixel=(0, 0, 0))
+
+
 def test_unwrap_dimensional_rejects_1d():
     with pytest.raises(ValueError, match="2D or 3D"):
         unwrap_dimensional(np.zeros(5))
