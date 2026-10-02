@@ -57,11 +57,15 @@ def calculate_k(
     weights: np.ndarray | None = None,
     adaptive_weighting: bool = True,
 ) -> np.ndarray | None:
-    """Solve integer edge ambiguities on elementary cycles with an ILP.
+    """Solve per-edge integer ambiguities on elementary cycles.
 
     Finds per-edge integers ``k`` such that the corrected differences
     ``differences + k`` sum to zero around every simplex, minimizing the
     weighted L1 norm of ``k`` through HiGHS.
+
+    The constraint matrix is totally unimodular, so the linear
+    programming relaxation already attains the integer optimum and no
+    integer constraints are imposed.
 
     Parameters
     ----------
@@ -137,11 +141,11 @@ def calculate_k(
             c = np.ones((M * 2,), dtype=np.int64)
     else:
         c = np.tile(weights, 2)
-    res = linprog(c, A_eq=A_eq, b_eq=b_eq, integrality=1)
+    res = linprog(c, A_eq=A_eq, b_eq=b_eq)
     if res.x is None:
         return None
     k = res.x[:M] - res.x[M:]
-    k = k.astype(np.int64)
+    k = np.round(k).astype(np.int64)
     return k
 
 
@@ -150,11 +154,15 @@ def calculate_m(
     differences: np.ndarray,
     weights: np.ndarray | None = None,
 ) -> np.ndarray | None:
-    """Solve integer vertex offsets from quantized edge differences with an ILP.
+    """Solve per-vertex integer offsets from quantized edge differences.
 
     Finds per-vertex integers ``m`` with ``m[u] - m[v]`` matching
     ``differences`` on each edge ``(u, v)``, minimizing the weighted L1
     norm of the slacks through HiGHS.
+
+    The constraint matrix is totally unimodular, so the linear
+    programming relaxation already attains the integer optimum and no
+    integer constraints are imposed.
 
     Parameters
     ----------
@@ -194,11 +202,11 @@ def calculate_m(
 
     b_eq = differences
 
-    res = linprog(c, A_eq=A_eq, b_eq=b_eq, integrality=1)
+    res = linprog(c, A_eq=A_eq, b_eq=b_eq)
     if res.x is None:
         return None
     m = res.x[:N]
-    return m.astype(np.int64)
+    return np.round(m).astype(np.int64)
 
 
 def puma(psi: np.ndarray, edges: np.ndarray, max_jump: int = 1, p: float = 1) -> np.ndarray:
