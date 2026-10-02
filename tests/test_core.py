@@ -136,6 +136,17 @@ def test_calculate_m_rejects_non_optimal_solution(monkeypatch):
     assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
 
 
+def test_calculate_m_falls_back_to_primal_when_dual_fails(monkeypatch):
+    # If the dual LP reports no optimal solution, calculate_m re-solves the
+    # primal integer program instead of returning None.
+    monkeypatch.setattr(core, "_solve_dual_m", lambda *a, **k: None)
+    edges = np.array([[0, 1], [1, 2]])
+    differences = np.array([1, -1], dtype=np.int64)
+    m = calculate_m(edges, differences)
+    assert m is not None
+    np.testing.assert_array_equal(m[edges[:, 0]] - m[edges[:, 1]], differences)
+
+
 def test_calculate_m_returns_none_when_infeasible(monkeypatch):
     monkeypatch.setattr(core, "linprog", lambda *a, **k: SimpleNamespace(x=None, success=False))
     assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
