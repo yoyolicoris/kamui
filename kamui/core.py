@@ -31,12 +31,13 @@ def _solve_integer_program(
     program. Not every input gives one (3-D grids with a cyclical axis and
     arbitrary user cycles can have half-integral optima), so re-solve with
     integrality constraints whenever HiGHS returns a fractional solution.
-    Returns None when the program is infeasible.
+    Returns None unless HiGHS reports an optimal solution: on a time or
+    iteration limit it can hand back a point that is not optimal.
     """
     res = linprog(c, A_eq=A_eq, b_eq=b_eq)
-    if res.x is not None and np.abs(res.x - np.round(res.x)).max() > 1e-6:
+    if res.success and np.abs(res.x - np.round(res.x)).max() > 1e-6:
         res = linprog(c, A_eq=A_eq, b_eq=b_eq, integrality=1)
-    return None if res.x is None else np.round(res.x)
+    return np.round(res.x) if res.success else None
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
@@ -109,7 +110,8 @@ def calculate_k(
     Returns
     -------
     (M,) np.ndarray or None
-        Integer ambiguity per edge, or None if HiGHS reports infeasibility.
+        Integer ambiguity per edge, or None if HiGHS finds no optimal
+        solution, e.g. because the program is infeasible.
     """
     M, N = edges.shape[0], len(simplices)
 
@@ -195,7 +197,8 @@ def calculate_m(
     Returns
     -------
     (V,) np.ndarray or None
-        Integer offset per vertex, or None if HiGHS reports infeasibility.
+        Integer offset per vertex, or None if HiGHS finds no optimal
+        solution, e.g. because the program is infeasible.
     """
     assert differences.dtype == np.int64, "differences must be int"
     M = edges.shape[0]

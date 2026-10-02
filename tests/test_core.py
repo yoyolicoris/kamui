@@ -72,7 +72,10 @@ def _spy_linprog(monkeypatch):
 
 
 def test_calculate_k_solves_grid_as_plain_lp(monkeypatch):
-    # a 2-D grid's cycle matrix is totally unimodular, so one LP solve suffices
+    # A 2-D grid's cycle matrix is totally unimodular, so one LP solve
+    # suffices. This is a speed canary: if a future HiGHS returns a
+    # non-vertex optimum here, results stay correct through the ILP fallback
+    # and only this assertion fails.
     calls = _spy_linprog(monkeypatch)
     edges, simplices = get_2d_edges_and_simplices((6, 6))
     psi = np.random.default_rng(0).uniform(-np.pi, np.pi, 36)
@@ -101,7 +104,7 @@ def test_calculate_k_falls_back_to_ilp_on_fractional_lp(monkeypatch):
 
 def test_calculate_k_returns_none_when_infeasible(monkeypatch):
     edges, simplices = _triangle()
-    monkeypatch.setattr(core, "linprog", lambda *a, **k: SimpleNamespace(x=None))
+    monkeypatch.setattr(core, "linprog", lambda *a, **k: SimpleNamespace(x=None, success=False))
     assert calculate_k(edges, simplices, np.array([0.1, 0.1, -0.2])) is None
 
 
@@ -126,8 +129,15 @@ def test_calculate_m_rejects_non_integer_differences():
         calculate_m(np.array([[0, 1]]), np.array([0.5]))
 
 
+def test_calculate_m_rejects_non_optimal_solution(monkeypatch):
+    # e.g. a time limit: HiGHS returns a point but does not report success
+    result = SimpleNamespace(x=np.zeros(4), success=False)
+    monkeypatch.setattr(core, "linprog", lambda *a, **k: result)
+    assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
+
+
 def test_calculate_m_returns_none_when_infeasible(monkeypatch):
-    monkeypatch.setattr(core, "linprog", lambda *a, **k: SimpleNamespace(x=None))
+    monkeypatch.setattr(core, "linprog", lambda *a, **k: SimpleNamespace(x=None, success=False))
     assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
 
 
