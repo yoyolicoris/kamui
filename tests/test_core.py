@@ -4,7 +4,9 @@ import numpy as np
 import pytest
 
 import kamui.core as core
+from kamui import wrap_difference
 from kamui.core import calculate_k, calculate_m, integrate, puma
+from kamui.utils import get_2d_edges_and_simplices
 
 
 def test_integrate_chain():
@@ -54,6 +56,47 @@ def test_calculate_k_rejects_duplicate_edges():
 def test_calculate_k_rejects_invalid_simplex_edge():
     with pytest.raises(ValueError, match="simplices contain invalid edges"):
         calculate_k(np.array([[0, 1]]), [[0, 2]], np.array([0.1]))
+
+
+def _spy_linprog(monkeypatch):
+    # record the integrality argument of every solve
+    calls = []
+    real = core.linprog
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs.get("integrality"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(core, "linprog", spy)
+    return calls
+
+
+def test_calculate_k_solves_grid_as_plain_lp(monkeypatch):
+    # a 2-D grid's cycle matrix is totally unimodular, so one LP solve suffices
+    calls = _spy_linprog(monkeypatch)
+    edges, simplices = get_2d_edges_and_simplices((6, 6))
+    psi = np.random.default_rng(0).uniform(-np.pi, np.pi, 36)
+    differences = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]]) / (2 * np.pi)
+    k = calculate_k(edges, simplices, differences)
+    assert calls == [None]
+    assert np.abs(k).sum() > 0
+
+
+def test_calculate_k_falls_back_to_ilp_on_fractional_lp(monkeypatch):
+    # Two 4-cycles of K4 whose cycle matrix is not totally unimodular. The
+    # unique LP optimum puts -0.5 on the cheap edges (0, 1) and (2, 3);
+    # rounding it would leave the first loop's residue uncorrected.
+    calls = _spy_linprog(monkeypatch)
+    edges = np.array([[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]])
+    psi = np.array([0.0, 0.49, -0.49, 0.0])
+    differences = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period=1.0)
+    weights = np.array([1.0, 10.0, 10.0, 10.0, 10.0, 1.0])
+    k = calculate_k(edges, [[0, 1, 2, 3], [0, 1, 3, 2]], differences, weights=weights)
+    assert calls == [None, 1]
+    c = differences + k
+    np.testing.assert_allclose([c[0] + c[3] + c[5] - c[2], c[0] + c[4] - c[5] - c[1]], 0, atol=1e-9)
+    # the integer optimum moves one expensive edge
+    assert weights @ np.abs(k) == 10
 
 
 def test_calculate_k_returns_none_when_infeasible(monkeypatch):
