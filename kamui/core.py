@@ -41,7 +41,7 @@ def _solve_integer_program(
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
-    """Integrate edge weights along a depth-first traversal of a directed graph.
+    """Integrate edge weights along the depth-first spanning tree of a directed graph.
 
     Parameters
     ----------
@@ -55,17 +55,31 @@ def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.nd
     Returns
     -------
     (V,) np.ndarray
-        Accumulated weight at each of the V nodes; unreachable nodes keep 0.
+        Sum of the edge weights on the tree path from ``start_i`` to each of
+        the V nodes; unreachable nodes keep 0.
     """
-    G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])))
-    N = max(G.shape)
+    N = int(edges.max()) + 1
+    G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])), shape=(N, N))
+    order, parent = csg.depth_first_order(G, start_i, directed=True, return_predecessors=True)
+
+    # Start from the weight of the tree edge into each reached node. Each node
+    # must build on its parent, not on the node visited just before it: after
+    # the traversal backtracks, those two share no edge.
     result = np.zeros(N, dtype=weights.dtype)
+    children = order[1:]
+    if children.size:
+        result[children] = np.asarray(G[parent[children], children]).ravel()
 
-    nodes = csg.depth_first_order(G, start_i, directed=True, return_predecessors=False)
-
-    pairs = np.stack([nodes[:-1], nodes[1:]], axis=1)
-    for u, v in pairs:
-        result[v] = result[u] + G[u, v]
+    # Pointer jumping: each pass adds the partial sum held by a node's current
+    # ancestor and then skips to that ancestor's ancestor, so a tree path of
+    # depth d is summed in about log2(d) vectorized passes.
+    ancestor = parent.copy()
+    pending = np.flatnonzero(ancestor >= 0)
+    while pending.size:
+        up = ancestor[pending]
+        result[pending] += result[up]
+        ancestor[pending] = ancestor[up]
+        pending = pending[ancestor[pending] >= 0]
     return result
 
 
