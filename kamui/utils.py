@@ -71,13 +71,15 @@ def get_2d_edges_and_simplices(
         axis=1,
     ).tolist()
     if len(cyclical_axis) > 0:
-        pairs = [
-            (
-                np.squeeze(np.take(nodes, [0], axis=ax), axis=ax),
-                np.squeeze(np.take(nodes, [-1], axis=ax), axis=ax),
-            )
-            for ax in cyclical_axis
-        ]
+        pairs = []
+        for ax in cyclical_axis:
+            first = np.squeeze(np.take(nodes, [0], axis=ax), axis=ax)
+            last = np.squeeze(np.take(nodes, [-1], axis=ax), axis=ax)
+            # Orient the wrap-around cells like the interior ones, which step
+            # down axis 0 first: across axis 0 that means starting from the
+            # last row, so every edge two cells share is traversed in opposite
+            # directions (as the min-cost-flow solver requires).
+            pairs.append((last, first) if ax == 0 else (first, last))
         simplices += np.concatenate(
             tuple(
                 np.stack(
