@@ -149,7 +149,7 @@ Without `simplices`, `unwrap_arbitrary(psi, edges)` uses the edgelist formulatio
 The edgelist ILP needs no cycles, because it optimizes vertex offsets $`m \in \mathbb{Z}^{\lvert V \rvert}`$ directly, with $`\phi = \psi + 2\pi m`$:
 
 ```math
-\min_{m \in \mathbb{Z}^{\lvert V \rvert}} \; \sum_{e = (u, v) \in E} w_e \left\lvert m_v - m_u + \operatorname{round}\!\left( \frac{\psi_v - \psi_u}{2\pi} \right) \right\rvert .
+\min_{m \in \mathbb{Z}^{\lvert V \rvert}} \; \sum_{e = (u, v) \in E} w_e \left\lvert m_v - m_u + \text{round}\left( \frac{\psi_v - \psi_u}{2\pi} \right) \right\rvert .
 ```
 
 The term inside the absolute value is the edge ambiguity $`k_e`$. This is therefore the cost of the simplex ILP, optimized over offsets instead of ambiguities. The two optima agree whenever the cycles cover every loop of the graph, as grid cells and mesh triangles do.
