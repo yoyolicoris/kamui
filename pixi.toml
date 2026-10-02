@@ -37,6 +37,11 @@ numpydoc = ">=1.11.0,<2"
 # whole `requires-python` range instead of whatever the solver happens to pick.
 [feature.py310.dependencies]
 python = "3.10.*"
+# conda-forge's only SciPy 1.15 builds (1.15.0-1.15.2) run HiGHS hundreds of
+# times slower on kamui's programs: about 5 s for a 32x32 grid, against 10 ms
+# for the PyPI wheels and for other conda-forge releases (measured on
+# osx-arm64). The README examples would take hours there, so stay on 1.14.
+scipy = "<1.15"
 
 [feature.py311.dependencies]
 python = "3.11.*"

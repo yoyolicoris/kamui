@@ -10,7 +10,7 @@ from collections.abc import Iterable
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.optimize import linprog
+from scipy.optimize import OptimizeResult, linprog
 from scipy.sparse import csgraph as csg
 
 try:
@@ -23,7 +23,7 @@ __all__ = ["integrate", "calculate_k", "calculate_m", "puma"]
 
 def _solve_integer_program(
     c: np.ndarray, A_eq: sp.csr_matrix, b_eq: np.ndarray
-) -> np.ndarray | None:
+) -> tuple[np.ndarray | None, OptimizeResult]:
     """Minimize ``c @ x`` subject to ``A_eq @ x == b_eq``, ``x >= 0``, x integer.
 
     Try the LP relaxation first: it is several times cheaper than branch and
@@ -31,13 +31,22 @@ def _solve_integer_program(
     program. Not every input gives one (3-D grids with a cyclical axis and
     arbitrary user cycles can have half-integral optima), so re-solve with
     integrality constraints whenever HiGHS returns a fractional solution.
-    Returns None unless HiGHS reports an optimal solution: on a time or
-    iteration limit it can hand back a point that is not optimal.
+    The solution is None unless HiGHS reports an optimal one: on a time or
+    iteration limit it can hand back a point that is not optimal. Also
+    returns the solver report that ``return_info`` exposes.
     """
     res = linprog(c, A_eq=A_eq, b_eq=b_eq)
-    if res.success and np.abs(res.x - np.round(res.x)).max() > 1e-6:
+    ilp_fallback = bool(res.success and np.abs(res.x - np.round(res.x)).max() > 1e-6)
+    if ilp_fallback:
         res = linprog(c, A_eq=A_eq, b_eq=b_eq, integrality=1)
-    return np.round(res.x) if res.success else None
+    info = OptimizeResult(
+        fun=res.fun,
+        success=res.success,
+        status=res.status,
+        message=res.message,
+        ilp_fallback=ilp_fallback,
+    )
+    return (np.round(res.x) if res.success else None), info
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
@@ -92,7 +101,9 @@ def calculate_k(
     differences: np.ndarray,
     weights: np.ndarray | None = None,
     adaptive_weighting: bool = True,
-) -> np.ndarray | None:
+    *,
+    return_info: bool = False,
+) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
     """Solve per-edge integer ambiguities on elementary cycles.
 
     Finds per-edge integers ``k`` such that the corrected differences
@@ -123,12 +134,20 @@ def calculate_k(
     adaptive_weighting : bool, optional
         Weight edges by incident zero-residue simplex counts.
         Defaults to True.
+    return_info : bool, optional
+        Also return the solver report. Defaults to False.
 
     Returns
     -------
-    (M,) np.ndarray or None
+    k : (M,) np.ndarray or None
         Integer ambiguity per edge, or None if HiGHS finds no optimal
         solution, e.g. because the program is infeasible.
+    info : scipy.optimize.OptimizeResult
+        Only returned if ``return_info`` is True. ``fun`` is the weighted
+        L1 cost of ``k`` (None without a solution); ``success``,
+        ``status`` and ``message`` come from HiGHS; ``ilp_fallback`` is
+        True when the LP optimum was fractional and the integer program
+        was solved instead.
     """
     M, N = edges.shape[0], len(simplices)
 
@@ -181,17 +200,18 @@ def calculate_k(
             c = np.ones((M * 2,), dtype=np.int64)
     else:
         c = np.tile(weights, 2)
-    x = _solve_integer_program(c, A_eq, b_eq)
-    if x is None:
-        return None
-    return (x[:M] - x[M:]).astype(np.int64)
+    x, info = _solve_integer_program(c, A_eq, b_eq)
+    k = None if x is None else (x[:M] - x[M:]).astype(np.int64)
+    return (k, info) if return_info else k
 
 
 def calculate_m(
     edges: np.ndarray,
     differences: np.ndarray,
     weights: np.ndarray | None = None,
-) -> np.ndarray | None:
+    *,
+    return_info: bool = False,
+) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
     """Solve per-vertex integer offsets from quantized edge differences.
 
     Finds per-vertex integers ``m`` with ``m[u] - m[v]`` matching
@@ -207,17 +227,26 @@ def calculate_m(
     edges : (M, 2) np.ndarray
         Array of edges.
     differences : (M,) np.ndarray
-        Quantized differences; must have int64 dtype.
+        Quantized differences, of any integer dtype.
     weights : (M,) np.ndarray, optional
         Per-edge weights. Defaults to uniform weights.
+    return_info : bool, optional
+        Also return the solver report. Defaults to False.
 
     Returns
     -------
-    (V,) np.ndarray or None
+    m : (V,) np.ndarray or None
         Integer offset per vertex, or None if HiGHS finds no optimal
         solution, e.g. because the program is infeasible.
+    info : scipy.optimize.OptimizeResult
+        Only returned if ``return_info`` is True. ``fun`` is the weighted
+        L1 norm of the slacks (None without a solution); ``success``,
+        ``status`` and ``message`` come from HiGHS; ``ilp_fallback`` is
+        True when the LP optimum was fractional and the integer program
+        was solved instead.
     """
-    assert differences.dtype == np.int64, "differences must be int"
+    if not np.issubdtype(differences.dtype, np.integer):
+        raise TypeError(f"differences must have an integer dtype; got {differences.dtype}")
     M = edges.shape[0]
     N = np.max(edges) + 1
 
@@ -239,15 +268,19 @@ def calculate_m(
         weights = np.ones((M,), dtype=np.int64)
     c = np.concatenate((np.zeros(N, dtype=np.int64), weights, weights))
 
-    b_eq = differences
-
-    x = _solve_integer_program(c, A_eq, b_eq)
-    if x is None:
-        return None
-    return x[:N].astype(np.int64)
+    x, info = _solve_integer_program(c, A_eq, b_eq=differences)
+    m = None if x is None else x[:N].astype(np.int64)
+    return (m, info) if return_info else m
 
 
-def puma(psi: np.ndarray, edges: np.ndarray, max_jump: int = 1, p: float = 1) -> np.ndarray:
+def puma(
+    psi: np.ndarray,
+    edges: np.ndarray,
+    max_jump: int = 1,
+    p: float = 1,
+    *,
+    return_info: bool = False,
+) -> np.ndarray | tuple[np.ndarray, OptimizeResult]:
     """Unwrap phase with PUMA, a graph-cut based phase unwrapping method.
 
     Iteratively proposes integer jumps on subsets of vertices and keeps
@@ -263,11 +296,16 @@ def puma(psi: np.ndarray, edges: np.ndarray, max_jump: int = 1, p: float = 1) ->
         Maximum jump step proposed per iteration. Defaults to 1.
     p : float, optional
         Norm order of the energy. Defaults to 1.
+    return_info : bool, optional
+        Also return a report on the minimization. Defaults to False.
 
     Returns
     -------
-    (N,) np.ndarray
+    K : (N,) np.ndarray
         Integer jump per vertex.
+    info : scipy.optimize.OptimizeResult
+        Only returned if ``return_info`` is True. ``fun`` is the final
+        energy and ``nit`` the number of max-flow solves.
 
     Raises
     ------
@@ -321,6 +359,7 @@ def puma(psi: np.ndarray, edges: np.ndarray, max_jump: int = 1, p: float = 1) ->
         return np.sum(V(K[j] - K[i] - psi[i] + psi[j]))
 
     prev_Ek = cal_Ek(K, psi, edges[:, 0], edges[:, 1])
+    nit = 0
 
     for step in jump_steps:
         while True:
@@ -347,6 +386,7 @@ def puma(psi: np.ndarray, edges: np.ndarray, max_jump: int = 1, p: float = 1) ->
             for i in range(total_nodes):
                 G.add_tedge(i, tmp_st_weight[0, i], tmp_st_weight[1, i])
             G.maxflow()
+            nit += 1
 
             partition = G.get_grid_segments(np.arange(total_nodes))
             K[~partition] += step
@@ -358,4 +398,13 @@ def puma(psi: np.ndarray, edges: np.ndarray, max_jump: int = 1, p: float = 1) ->
             else:
                 K[~partition] -= step
                 break
-    return K
+    if not return_info:
+        return K
+    info = OptimizeResult(
+        fun=prev_Ek,
+        success=True,
+        status=0,
+        message="No proposed jump lowers the energy further.",
+        nit=nit,
+    )
+    return K, info
