@@ -34,7 +34,7 @@ classifiers = [
 # pylmcf (Python bindings for LEMON's network simplex, Boost licensed) solves
 # 2-D and planar programs as min-cost flows; it ships abi3 wheels for macOS,
 # Linux and Windows on x86 and arm64.
-dependencies = ["numpy>=2", "scipy>=1.13", "pylmcf>=1.2"]
+dependencies = ["numpy>=2", "scipy>=1.13", "pylmcf>=1.3"]
 
 [project.optional-dependencies]
 # Keep the existing extra name: the README documents `pip install kamui[extra]`.

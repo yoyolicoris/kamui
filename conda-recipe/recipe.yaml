@@ -52,7 +52,7 @@ requirements:
     - python >=${{ python_min }}
     - numpy >=2
     - scipy >=1.13
-    - pylmcf >=1.2
+    - pylmcf >=1.3
 
 tests:
   - python:

@@ -108,7 +108,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/urllib3-2.8.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - pypi: ./
-      - pypi: https://files.pythonhosted.org/packages/38/f2/b32d67085af6b333593764afc649f3762407411e4de943050ad3df99bc3a/pylmcf-1.2.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/57/16/9e376b4cc4464cf31d23954a795b2652a1119e7462770e14785d748c9bed/pylmcf-1.3.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a2/9f/6bc30bff12281449e38db93313bae71e08c776ecae310bd7f2efd7ef5ad4/PyMaxflow-1.3.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/c0/3e/0a2143308fd413ae10da3fb8732e9d2fc87de4605a1126d304ffe9f63414/nanobind_backend-1.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       osx-64:
@@ -191,7 +191,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/06/eb/1c4f3e1fcc41093e321b1c4eb7ca79f628a36057496398bb9fba4d97e417/nanobind_backend-1.0.0-cp313-cp313-macosx_10_14_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/31/5b/fd45da95eae07a22c5adbdc354763b205c8d267a79741b1fa6deef909950/PyMaxflow-1.3.2-cp313-cp313-macosx_10_13_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/a1/b0/2291873a3b0f1649023ce3f2ea7f2939f80dc5ad0ef4a56ecab04a1569eb/pylmcf-1.2.1-cp310-abi3-macosx_10_15_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/d9/12/3a8be7e1601a278d1afb82474c618293ac71f2787ca16004f42ba54847d8/pylmcf-1.3.0-cp310-abi3-macosx_10_15_x86_64.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/alabaster-1.0.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/babel-2.18.0-pyhcf101f3_1.conda
@@ -270,7 +270,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/18/c2/d59e5b6af43e45088c18895035e053c4585bce7d1bde9679368ef5b960e0/nanobind_backend-1.0.0-cp313-cp313-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/29/1a/151bcdb6e13dc9d5919868f24ac49dcb342c19f53531d4f2736833fd4b10/PyMaxflow-1.3.2-cp313-cp313-macosx_11_0_arm64.whl
-      - pypi: https://files.pythonhosted.org/packages/f6/0e/2035effbb87d208f09cca7eef2ce4960df75b86b16f4d6c9b86201534250/pylmcf-1.2.1-cp310-abi3-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/e3/e6/1f837261b3e554d87e53d1ea0cee15baf59dc82d2673780bd05dd3d0b159/pylmcf-1.3.0-cp310-abi3-macosx_11_0_arm64.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/alabaster-1.0.0-pyhd8ed1ab_1.conda
@@ -355,7 +355,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_7.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/90/49/8038eedfd35433968e638081ca4eb6881869e517f766beff0f095387dc9a/nanobind_backend-1.0.0-cp313-cp313-win_amd64.whl
-      - pypi: https://files.pythonhosted.org/packages/a2/91/72a21294857543fe194acd1b25202907d3f696e772d29e065c37974ca07d/pylmcf-1.2.1-cp310-abi3-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/b6/57/63f6a46e727326319fba27e3f29822aefa0fbe3b43b2cff926b147d30af0/pylmcf-1.3.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/ce/ed/dd5c1d0ee1f31d78b05a0fc26b2d0f93d0e54d81fed47f02dbcf7e80a8ab/PyMaxflow-1.3.2-cp313-cp313-win_amd64.whl
   py310:
     channels:
@@ -412,7 +412,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/wheel-0.48.0-pyhd8ed1ab_0.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/1a/f9/d51a4283c6d43455dde20fc5429edac8211b3e804dea40c40492991fa3cd/PyMaxflow-1.3.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/38/f2/b32d67085af6b333593764afc649f3762407411e4de943050ad3df99bc3a/pylmcf-1.2.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/57/16/9e376b4cc4464cf31d23954a795b2652a1119e7462770e14785d748c9bed/pylmcf-1.3.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/97/96/ee9bf6a053d8a2f505eab8cafc36ff8a3e4f928d0b01fd9befac579d537a/nanobind_backend-1.0.0-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
@@ -456,8 +456,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/scipy-1.14.1-py310hefd78d6_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/tk-8.6.13-ha6c374e_4.conda
       - pypi: ./
-      - pypi: https://files.pythonhosted.org/packages/a1/b0/2291873a3b0f1649023ce3f2ea7f2939f80dc5ad0ef4a56ecab04a1569eb/pylmcf-1.2.1-cp310-abi3-macosx_10_15_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/ad/4d/5bb2abeae6a7d9bae093ba58ec042eb220ce74e5fb1d2f16c33e2104d35f/PyMaxflow-1.3.2-cp310-cp310-macosx_10_9_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/d9/12/3a8be7e1601a278d1afb82474c618293ac71f2787ca16004f42ba54847d8/pylmcf-1.3.0-cp310-abi3-macosx_10_15_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/fe/23/e892b9c91154b16987ebc7efd795b3a23e244e8fba3ed071f9ac84224c3b/nanobind_backend-1.0.0-cp310-cp310-macosx_10_14_x86_64.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
@@ -504,7 +504,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/2c/7e/ef67e5cfc1436fb9759797fdd5fb68062d1d5cf50e36182c208749870d06/nanobind_backend-1.0.0-cp310-cp310-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/85/09/7ad4e58f3f2ab9802e60d1a6991cdd280a741401785a095b205ff4005602/PyMaxflow-1.3.2-cp310-cp310-macosx_11_0_arm64.whl
-      - pypi: https://files.pythonhosted.org/packages/f6/0e/2035effbb87d208f09cca7eef2ce4960df75b86b16f4d6c9b86201534250/pylmcf-1.2.1-cp310-abi3-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/e3/e6/1f837261b3e554d87e53d1ea0cee15baf59dc82d2673780bd05dd3d0b159/pylmcf-1.3.0-cp310-abi3-macosx_11_0_arm64.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-h4c7d964_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -551,7 +551,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.51.36247-habf1de7_41.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-habf1de7_41.conda
       - pypi: ./
-      - pypi: https://files.pythonhosted.org/packages/a2/91/72a21294857543fe194acd1b25202907d3f696e772d29e065c37974ca07d/pylmcf-1.2.1-cp310-abi3-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/b6/57/63f6a46e727326319fba27e3f29822aefa0fbe3b43b2cff926b147d30af0/pylmcf-1.3.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/f6/57/43b908b28af715b36ba41d6d943b6005ab8326ea5e78d92b3d4051169b81/PyMaxflow-1.3.2-cp310-cp310-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/f8/74/1cd06a4ab1fbb03aaba84f27d2536c925a0c87d6873fc794c0258de45264/nanobind_backend-1.0.0-cp310-cp310-win_amd64.whl
   py311:
@@ -609,7 +609,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/wheel-0.48.0-pyhd8ed1ab_0.conda
       - pypi: ./
-      - pypi: https://files.pythonhosted.org/packages/38/f2/b32d67085af6b333593764afc649f3762407411e4de943050ad3df99bc3a/pylmcf-1.2.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/57/16/9e376b4cc4464cf31d23954a795b2652a1119e7462770e14785d748c9bed/pylmcf-1.3.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/5f/9a/0db4d9982ac708b6c532ca6ea2a523d5c85a25f7fc288558c4d6fad725b0/nanobind_backend-1.0.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/61/1f/da408c87ec1a8e8533f8c37071d4b69848b4d767b0267a388571f5cc27df/PyMaxflow-1.3.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       osx-64:
@@ -657,7 +657,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/73/d6/e15724819b9c7c771db652c80a8d8aeb2848e747b161bc96a81de4d4e8d6/PyMaxflow-1.3.2-cp311-cp311-macosx_10_9_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/76/49/a4c01de9c358b5749560a5415b899a8b57399381e5c8ae64962381302a59/nanobind_backend-1.0.0-cp311-cp311-macosx_10_14_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/a1/b0/2291873a3b0f1649023ce3f2ea7f2939f80dc5ad0ef4a56ecab04a1569eb/pylmcf-1.2.1-cp310-abi3-macosx_10_15_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/d9/12/3a8be7e1601a278d1afb82474c618293ac71f2787ca16004f42ba54847d8/pylmcf-1.3.0-cp310-abi3-macosx_10_15_x86_64.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -704,7 +704,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/6f/6e/31b1b57bb020b3b0481f23a5ed196cdc432227600a96a5e6b5d73280349b/PyMaxflow-1.3.2-cp311-cp311-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/a8/65/c3ff5ef09109a163a3cbe8a69250ae7c4b0b4d8df79b1cb447d03747529f/nanobind_backend-1.0.0-cp311-cp311-macosx_11_0_arm64.whl
-      - pypi: https://files.pythonhosted.org/packages/f6/0e/2035effbb87d208f09cca7eef2ce4960df75b86b16f4d6c9b86201534250/pylmcf-1.2.1-cp310-abi3-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/e3/e6/1f837261b3e554d87e53d1ea0cee15baf59dc82d2673780bd05dd3d0b159/pylmcf-1.3.0-cp310-abi3-macosx_11_0_arm64.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-h4c7d964_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -753,7 +753,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-habf1de7_41.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/4d/6d/1633c2a10b2e368c651396910e235b62026c62657808d5754ddd6233628e/PyMaxflow-1.3.2-cp311-cp311-win_amd64.whl
-      - pypi: https://files.pythonhosted.org/packages/a2/91/72a21294857543fe194acd1b25202907d3f696e772d29e065c37974ca07d/pylmcf-1.2.1-cp310-abi3-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/b6/57/63f6a46e727326319fba27e3f29822aefa0fbe3b43b2cff926b147d30af0/pylmcf-1.3.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/d9/22/8a2576123da22743a1ca6b683e2e1a046990dd75ab3f70c21c0c8690d936/nanobind_backend-1.0.0-cp311-cp311-win_amd64.whl
   py312:
     channels:
@@ -810,7 +810,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/wheel-0.48.0-pyhd8ed1ab_0.conda
       - pypi: ./
-      - pypi: https://files.pythonhosted.org/packages/38/f2/b32d67085af6b333593764afc649f3762407411e4de943050ad3df99bc3a/pylmcf-1.2.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/57/16/9e376b4cc4464cf31d23954a795b2652a1119e7462770e14785d748c9bed/pylmcf-1.3.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/8b/aa/90df81ac75f0a12961c04b339394510e8f526bb251f61f750787b5cbcc90/PyMaxflow-1.3.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b9/2c/7fb13ecb1e8c0c268e26c6bc44be4a7f51996b2a3c006749ce6fc4fd7da2/nanobind_backend-1.0.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       osx-64:
@@ -857,8 +857,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/tk-8.6.13-ha6c374e_4.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/6d/37/e0ea14f87718f161e12b8f8b3271b6757db3caa03deea2eb85434a1c0143/PyMaxflow-1.3.2-cp312-cp312-macosx_10_13_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/a1/b0/2291873a3b0f1649023ce3f2ea7f2939f80dc5ad0ef4a56ecab04a1569eb/pylmcf-1.2.1-cp310-abi3-macosx_10_15_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/b8/57/f02cc977a0ba1ddf2a41ebad61bcf2fbfd905aef7753082d9f39389a13e1/nanobind_backend-1.0.0-cp312-cp312-macosx_10_14_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/d9/12/3a8be7e1601a278d1afb82474c618293ac71f2787ca16004f42ba54847d8/pylmcf-1.3.0-cp310-abi3-macosx_10_15_x86_64.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -904,8 +904,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tk-8.6.13-hbeba79b_4.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/bc/3a/40e9ef3133573dddf32f7dcaf1bc7d4f459ecb632b2274c7a619fbfa40ea/nanobind_backend-1.0.0-cp312-cp312-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/e3/e6/1f837261b3e554d87e53d1ea0cee15baf59dc82d2673780bd05dd3d0b159/pylmcf-1.3.0-cp310-abi3-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/f2/ac/50e6685e98ab7735f3178d2f6df395222a3455eacbd471287fdd8f074897/PyMaxflow-1.3.2-cp312-cp312-macosx_11_0_arm64.whl
-      - pypi: https://files.pythonhosted.org/packages/f6/0e/2035effbb87d208f09cca7eef2ce4960df75b86b16f4d6c9b86201534250/pylmcf-1.2.1-cp310-abi3-macosx_11_0_arm64.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-h4c7d964_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -955,7 +955,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/47/1c/b384d2cd6f9cbbf4a2c80dff70d5cecb74320061d68bc33e5bce18b16dc1/PyMaxflow-1.3.2-cp312-cp312-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/7f/da/f6af805e0737652d4b6aa2e51e3ec1485d906e77ee9389b126adbb9f9644/nanobind_backend-1.0.0-cp312-cp312-win_amd64.whl
-      - pypi: https://files.pythonhosted.org/packages/a2/91/72a21294857543fe194acd1b25202907d3f696e772d29e065c37974ca07d/pylmcf-1.2.1-cp310-abi3-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/b6/57/63f6a46e727326319fba27e3f29822aefa0fbe3b43b2cff926b147d30af0/pylmcf-1.3.0-cp310-abi3-win_amd64.whl
   py313:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -1008,7 +1008,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/typing_extensions-4.16.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - pypi: ./
-      - pypi: https://files.pythonhosted.org/packages/38/f2/b32d67085af6b333593764afc649f3762407411e4de943050ad3df99bc3a/pylmcf-1.2.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/57/16/9e376b4cc4464cf31d23954a795b2652a1119e7462770e14785d748c9bed/pylmcf-1.3.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a2/9f/6bc30bff12281449e38db93313bae71e08c776ecae310bd7f2efd7ef5ad4/PyMaxflow-1.3.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/c0/3e/0a2143308fd413ae10da3fb8732e9d2fc87de4605a1126d304ffe9f63414/nanobind_backend-1.0.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       osx-64:
@@ -1055,7 +1055,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/06/eb/1c4f3e1fcc41093e321b1c4eb7ca79f628a36057496398bb9fba4d97e417/nanobind_backend-1.0.0-cp313-cp313-macosx_10_14_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/31/5b/fd45da95eae07a22c5adbdc354763b205c8d267a79741b1fa6deef909950/PyMaxflow-1.3.2-cp313-cp313-macosx_10_13_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/a1/b0/2291873a3b0f1649023ce3f2ea7f2939f80dc5ad0ef4a56ecab04a1569eb/pylmcf-1.2.1-cp310-abi3-macosx_10_15_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/d9/12/3a8be7e1601a278d1afb82474c618293ac71f2787ca16004f42ba54847d8/pylmcf-1.3.0-cp310-abi3-macosx_10_15_x86_64.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -1101,7 +1101,7 @@ environments:
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/18/c2/d59e5b6af43e45088c18895035e053c4585bce7d1bde9679368ef5b960e0/nanobind_backend-1.0.0-cp313-cp313-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/29/1a/151bcdb6e13dc9d5919868f24ac49dcb342c19f53531d4f2736833fd4b10/PyMaxflow-1.3.2-cp313-cp313-macosx_11_0_arm64.whl
-      - pypi: https://files.pythonhosted.org/packages/f6/0e/2035effbb87d208f09cca7eef2ce4960df75b86b16f4d6c9b86201534250/pylmcf-1.2.1-cp310-abi3-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/e3/e6/1f837261b3e554d87e53d1ea0cee15baf59dc82d2673780bd05dd3d0b159/pylmcf-1.3.0-cp310-abi3-macosx_11_0_arm64.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-h4c7d964_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -1149,7 +1149,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-habf1de7_41.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/90/49/8038eedfd35433968e638081ca4eb6881869e517f766beff0f095387dc9a/nanobind_backend-1.0.0-cp313-cp313-win_amd64.whl
-      - pypi: https://files.pythonhosted.org/packages/a2/91/72a21294857543fe194acd1b25202907d3f696e772d29e065c37974ca07d/pylmcf-1.2.1-cp310-abi3-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/b6/57/63f6a46e727326319fba27e3f29822aefa0fbe3b43b2cff926b147d30af0/pylmcf-1.3.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/ce/ed/dd5c1d0ee1f31d78b05a0fc26b2d0f93d0e54d81fed47f02dbcf7e80a8ab/PyMaxflow-1.3.2-cp313-cp313-win_amd64.whl
   py314:
     channels:
@@ -1203,7 +1203,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/typing_extensions-4.16.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/tzdata-2026c-h151e31d_0.conda
       - pypi: ./
-      - pypi: https://files.pythonhosted.org/packages/38/f2/b32d67085af6b333593764afc649f3762407411e4de943050ad3df99bc3a/pylmcf-1.2.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/57/16/9e376b4cc4464cf31d23954a795b2652a1119e7462770e14785d748c9bed/pylmcf-1.3.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/f4/d8/a719512ee03084541fc8e6f1fa06be366fb97f9c39f0b3b3bba7364769e8/pymaxflow-1.3.2.tar.gz
       - pypi: https://files.pythonhosted.org/packages/fc/65/8073c078a91e2fed8c54154f6a0b1d39e362c0ab5ffa7cb93c73f87c9954/nanobind_backend-1.0.0-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
       osx-64:
@@ -1250,7 +1250,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/33/82/474e530e562a2c98db0dbd35cc2bc08500895be7cab6b13c5c990c09a650/nanobind_backend-1.0.0-cp314-cp314-macosx_10_15_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/a1/b0/2291873a3b0f1649023ce3f2ea7f2939f80dc5ad0ef4a56ecab04a1569eb/pylmcf-1.2.1-cp310-abi3-macosx_10_15_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/d9/12/3a8be7e1601a278d1afb82474c618293ac71f2787ca16004f42ba54847d8/pylmcf-1.3.0-cp310-abi3-macosx_10_15_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/f4/d8/a719512ee03084541fc8e6f1fa06be366fb97f9c39f0b3b3bba7364769e8/pymaxflow-1.3.2.tar.gz
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
@@ -1297,8 +1297,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/8f/36/7f79710b96ba643c91db149f7ba1b454124cf2cf97e379ef6c3529d97dd0/nanobind_backend-1.0.0-cp314-cp314-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/e3/e6/1f837261b3e554d87e53d1ea0cee15baf59dc82d2673780bd05dd3d0b159/pylmcf-1.3.0-cp310-abi3-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/f4/d8/a719512ee03084541fc8e6f1fa06be366fb97f9c39f0b3b3bba7364769e8/pymaxflow-1.3.2.tar.gz
-      - pypi: https://files.pythonhosted.org/packages/f6/0e/2035effbb87d208f09cca7eef2ce4960df75b86b16f4d6c9b86201534250/pylmcf-1.2.1-cp310-abi3-macosx_11_0_arm64.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-h4c7d964_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/colorama-0.4.6-pyhd8ed1ab_1.conda
@@ -1347,7 +1347,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_7.conda
       - pypi: ./
       - pypi: https://files.pythonhosted.org/packages/89/3e/e33c10a7b0a728e83d492673612146ed7cd47c5d28c242969b4296cb6265/nanobind_backend-1.0.0-cp314-cp314-win_amd64.whl
-      - pypi: https://files.pythonhosted.org/packages/a2/91/72a21294857543fe194acd1b25202907d3f696e772d29e065c37974ca07d/pylmcf-1.2.1-cp310-abi3-win_amd64.whl
+      - pypi: https://files.pythonhosted.org/packages/b6/57/63f6a46e727326319fba27e3f29822aefa0fbe3b43b2cff926b147d30af0/pylmcf-1.3.0-cp310-abi3-win_amd64.whl
       - pypi: https://files.pythonhosted.org/packages/f4/d8/a719512ee03084541fc8e6f1fa06be366fb97f9c39f0b3b3bba7364769e8/pymaxflow-1.3.2.tar.gz
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
@@ -5867,7 +5867,7 @@ packages:
   name: kamui
   requires_dist:
   - numpy>=2
-  - pylmcf>=1.2
+  - pylmcf>=1.3
   - scipy>=1.13
   - pymaxflow ; extra == 'extra'
   requires_python: '>=3.10'
@@ -5909,18 +5909,6 @@ packages:
   version: 1.0.0
   sha256: 04a35c7395daeb9a33f6801ca3d1e11e0384702ae22b8e3e251ef9f6a4a54c10
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/38/f2/b32d67085af6b333593764afc649f3762407411e4de943050ad3df99bc3a/pylmcf-1.2.1-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
-  name: pylmcf
-  version: 1.2.1
-  sha256: 8d30bdaf2d9ddcfc5d8e7f28b646d6f72942b2ae123afe5a1af928e03f9f7210
-  requires_dist:
-  - numpy
-  - nanobind-backend>=1.0
-  - networkx ; extra == 'extras'
-  - matplotlib ; extra == 'extras'
-  - pytest ; extra == 'pytest'
-  - networkx ; extra == 'pytest'
-  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/47/1c/b384d2cd6f9cbbf4a2c80dff70d5cecb74320061d68bc33e5bce18b16dc1/PyMaxflow-1.3.2-cp312-cp312-win_amd64.whl
   name: pymaxflow
   version: 1.3.2
@@ -5933,6 +5921,18 @@ packages:
   sha256: 92d95f5d04c6d79e06c464fd9a83e9108131d0577c6de2b320cc3946fa04ad28
   requires_dist:
   - numpy>=1.26
+- pypi: https://files.pythonhosted.org/packages/57/16/9e376b4cc4464cf31d23954a795b2652a1119e7462770e14785d748c9bed/pylmcf-1.3.0-cp310-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl
+  name: pylmcf
+  version: 1.3.0
+  sha256: c9dd21aa8141b03e685dbf71a90f6361930a05ab7fc7c761c2ea5e591d7e1cfc
+  requires_dist:
+  - numpy
+  - nanobind-backend>=1.0
+  - networkx ; extra == 'extras'
+  - matplotlib ; extra == 'extras'
+  - pytest ; extra == 'pytest'
+  - networkx ; extra == 'pytest'
+  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/5f/9a/0db4d9982ac708b6c532ca6ea2a523d5c85a25f7fc288558c4d6fad725b0/nanobind_backend-1.0.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
   name: nanobind-backend
   version: 1.0.0
@@ -6004,30 +6004,6 @@ packages:
   version: 1.0.0
   sha256: b7ea25c4b69a337eae4377e0c53f0a000dfd996bfe61303bc03996e8b2bf5735
   requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/a1/b0/2291873a3b0f1649023ce3f2ea7f2939f80dc5ad0ef4a56ecab04a1569eb/pylmcf-1.2.1-cp310-abi3-macosx_10_15_x86_64.whl
-  name: pylmcf
-  version: 1.2.1
-  sha256: 8ddf27b73ed89ab5e1336f955c68eaa0ed8085ed47e9d24c7da3577bc5733cb7
-  requires_dist:
-  - numpy
-  - nanobind-backend>=1.0
-  - networkx ; extra == 'extras'
-  - matplotlib ; extra == 'extras'
-  - pytest ; extra == 'pytest'
-  - networkx ; extra == 'pytest'
-  requires_python: '>=3.10'
-- pypi: https://files.pythonhosted.org/packages/a2/91/72a21294857543fe194acd1b25202907d3f696e772d29e065c37974ca07d/pylmcf-1.2.1-cp310-abi3-win_amd64.whl
-  name: pylmcf
-  version: 1.2.1
-  sha256: 076c66344dbf08a0ba84d773bc3e0067c9f617ab502baee9e7a61f6f54c456ab
-  requires_dist:
-  - numpy
-  - nanobind-backend>=1.0
-  - networkx ; extra == 'extras'
-  - matplotlib ; extra == 'extras'
-  - pytest ; extra == 'pytest'
-  - networkx ; extra == 'pytest'
-  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/a2/9f/6bc30bff12281449e38db93313bae71e08c776ecae310bd7f2efd7ef5ad4/PyMaxflow-1.3.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
   name: pymaxflow
   version: 1.3.2
@@ -6045,6 +6021,18 @@ packages:
   sha256: 999b3e97e691394f2702a35a381e5f23e603f12093262cea58194078036887ac
   requires_dist:
   - numpy>=1.26
+- pypi: https://files.pythonhosted.org/packages/b6/57/63f6a46e727326319fba27e3f29822aefa0fbe3b43b2cff926b147d30af0/pylmcf-1.3.0-cp310-abi3-win_amd64.whl
+  name: pylmcf
+  version: 1.3.0
+  sha256: 52c14e909f760d6378b29e68ab38ea4cf57bf0c5d6db4740763624a31f3267ec
+  requires_dist:
+  - numpy
+  - nanobind-backend>=1.0
+  - networkx ; extra == 'extras'
+  - matplotlib ; extra == 'extras'
+  - pytest ; extra == 'pytest'
+  - networkx ; extra == 'pytest'
+  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/b8/57/f02cc977a0ba1ddf2a41ebad61bcf2fbfd905aef7753082d9f39389a13e1/nanobind_backend-1.0.0-cp312-cp312-macosx_10_14_x86_64.whl
   name: nanobind-backend
   version: 1.0.0
@@ -6071,10 +6059,34 @@ packages:
   sha256: 32961f56bd5033a70931f1b98f9ec666c2fa2dfc0843b92d7cc32a81ad2d7dee
   requires_dist:
   - numpy>=1.26
+- pypi: https://files.pythonhosted.org/packages/d9/12/3a8be7e1601a278d1afb82474c618293ac71f2787ca16004f42ba54847d8/pylmcf-1.3.0-cp310-abi3-macosx_10_15_x86_64.whl
+  name: pylmcf
+  version: 1.3.0
+  sha256: 9479337b24aea9e18bf856a7c471da6a489fde5695ac54d10666446824de1264
+  requires_dist:
+  - numpy
+  - nanobind-backend>=1.0
+  - networkx ; extra == 'extras'
+  - matplotlib ; extra == 'extras'
+  - pytest ; extra == 'pytest'
+  - networkx ; extra == 'pytest'
+  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/d9/22/8a2576123da22743a1ca6b683e2e1a046990dd75ab3f70c21c0c8690d936/nanobind_backend-1.0.0-cp311-cp311-win_amd64.whl
   name: nanobind-backend
   version: 1.0.0
   sha256: 691be892dcd6b4b1317d628b49bf3e688470f4f927ac316dca233ee19fab7ecd
+  requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/e3/e6/1f837261b3e554d87e53d1ea0cee15baf59dc82d2673780bd05dd3d0b159/pylmcf-1.3.0-cp310-abi3-macosx_11_0_arm64.whl
+  name: pylmcf
+  version: 1.3.0
+  sha256: 4926f11b00879750fc5addb0e364024a81e5580422cfbd715f7344745a00d60d
+  requires_dist:
+  - numpy
+  - nanobind-backend>=1.0
+  - networkx ; extra == 'extras'
+  - matplotlib ; extra == 'extras'
+  - pytest ; extra == 'pytest'
+  - networkx ; extra == 'pytest'
   requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/f2/ac/50e6685e98ab7735f3178d2f6df395222a3455eacbd471287fdd8f074897/PyMaxflow-1.3.2-cp312-cp312-macosx_11_0_arm64.whl
   name: pymaxflow
@@ -6088,18 +6100,6 @@ packages:
   sha256: 19f1668dd718d1451a1ad18902ac674b1b380cda1150c855b5e817f1b0de3095
   requires_dist:
   - numpy>=1.26
-- pypi: https://files.pythonhosted.org/packages/f6/0e/2035effbb87d208f09cca7eef2ce4960df75b86b16f4d6c9b86201534250/pylmcf-1.2.1-cp310-abi3-macosx_11_0_arm64.whl
-  name: pylmcf
-  version: 1.2.1
-  sha256: 776fae6ef51691cfd2100b33df375f59f34fcca984e26daeb69f9c1134dac896
-  requires_dist:
-  - numpy
-  - nanobind-backend>=1.0
-  - networkx ; extra == 'extras'
-  - matplotlib ; extra == 'extras'
-  - pytest ; extra == 'pytest'
-  - networkx ; extra == 'pytest'
-  requires_python: '>=3.10'
 - pypi: https://files.pythonhosted.org/packages/f6/57/43b908b28af715b36ba41d6d943b6005ab8326ea5e78d92b3d4051169b81/PyMaxflow-1.3.2-cp310-cp310-win_amd64.whl
   name: pymaxflow
   version: 1.3.2
