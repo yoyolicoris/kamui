@@ -58,17 +58,27 @@ def _check_solver(solver: str) -> None:
 
 
 def _lemon_takes(w: np.ndarray, solver: str) -> bool:
-    """Return whether LEMON can take the weights w; with solver="lemon", raise if not."""
-    integer = np.array_equal(w, np.round(w))  # also False for NaN
+    """Return whether LEMON can take the weights w exactly; with solver="lemon", raise if not.
+
+    Integer dtypes are exact as they are; floats must be finite whole
+    numbers. Weights must also stay below 2**62, pylmcf's cost limit, which
+    also keeps `calculate_m`'s capacities of twice the weight within int64.
+    """
+    integer = np.issubdtype(w.dtype, np.integer) or (
+        np.isfinite(w).all() and np.array_equal(w, np.round(w))
+    )
     non_negative = np.min(w, initial=0) >= 0
+    in_range = np.max(w, initial=0) < 2**62
     if solver == "lemon" and not integer:
         raise ValueError(
-            "solver='lemon' needs integer weights; scale and round them first, "
+            "solver='lemon' needs finite integer weights; scale and round them first, "
             "e.g. np.round(weights * 1000)"
         )
     if solver == "lemon" and not non_negative:
         raise ValueError("solver='lemon' needs non-negative weights")
-    return solver != "highs" and integer and non_negative
+    if solver == "lemon" and not in_range:
+        raise ValueError("solver='lemon' needs weights below 2**62")
+    return solver != "highs" and integer and non_negative and in_range
 
 
 def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np.ndarray | None:
@@ -315,8 +325,8 @@ def calculate_k(
     ValueError
         If the edges are not unique, the simplices use an edge not in
         ``edges``, ``solver`` is unknown, or ``solver="lemon"`` and the
-        weights are not non-negative integers or the cycles do not form
-        a min-cost flow.
+        weights are not non-negative integers below 2**62 or the cycles do
+        not form a min-cost flow.
     """
     _check_solver(solver)
     M, N = edges.shape[0], len(simplices)
@@ -366,7 +376,7 @@ def calculate_k(
     else:
         c = np.tile(weights, 2)
 
-    w = np.asarray(c[:M], dtype=np.float64)
+    w = np.asarray(c[:M])
     arcs = _dual_graph_arcs(V) if _lemon_takes(w, solver) else None
     if solver == "lemon" and arcs is None:
         raise ValueError(
@@ -381,7 +391,7 @@ def calculate_k(
             k, info = None, OptimizeResult(fun=None, success=False, status=2, message=str(err))
         else:
             info = OptimizeResult(
-                fun=float(w @ np.abs(k)),
+                fun=float(np.abs(k) @ w.astype(np.float64)),
                 success=True,
                 status=0,
                 message="Optimal min-cost flow found by LEMON's network simplex.",
@@ -450,7 +460,7 @@ def calculate_m(
         If ``differences`` does not have an integer dtype.
     ValueError
         If ``solver`` is unknown, or ``solver="lemon"`` and the weights are
-        not non-negative integers.
+        not non-negative integers below 2**62.
     """
     _check_solver(solver)
     if not np.issubdtype(differences.dtype, np.integer):
@@ -460,11 +470,11 @@ def calculate_m(
     if weights is None:
         weights = np.ones((M,), dtype=np.int64)
 
-    w = np.asarray(weights, dtype=np.float64)
+    w = np.asarray(weights)
     if _lemon_takes(w, solver):
         m = _solve_offsets_by_flow(edges, differences, w)
         info = OptimizeResult(
-            fun=float(w @ np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences)),
+            fun=float(np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences) @ w.astype(np.float64)),
             success=True,
             status=0,
             message="Optimal node potentials found by LEMON's network simplex.",

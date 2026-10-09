@@ -436,6 +436,41 @@ def test_calculate_m_rejects_unknown_solver():
         calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), solver="cplex")
 
 
+def test_lemon_keeps_large_integer_weights_exact():
+    # 2**53 + 1 rounds to 2**53 in float64, which would tie the two cheapest
+    # edges; the cheapest edge is 1 only if the weights stay exact
+    edges, simplices = _triangle()
+    weights = np.array([2**53 + 1, 2**53, 2**53 + 2])
+    k, info = calculate_k(edges, simplices, np.array([0.4, 0.4, 0.3]), weights, return_info=True)
+    assert info.solver == "lemon"
+    np.testing.assert_array_equal(k, [0, -1, 0])
+    differences = np.array([1, 1, 1])
+    m, info = calculate_m(edges, differences, weights, return_info=True)
+    assert info.solver == "lemon"
+    np.testing.assert_array_equal(m[edges[:, 1]] - m[edges[:, 0]] + differences, [0, 3, 0])
+
+
+@pytest.mark.parametrize(
+    ("weight", "message"), [(np.inf, "finite integer"), (2.0**62, "below 2\\*\\*62")]
+)
+def test_lemon_rejects_weights_it_cannot_take_exactly(weight, message):
+    edges, simplices = _triangle()
+    weights = np.array([1.0, weight, 1.0])
+    with pytest.raises(ValueError, match=message):
+        calculate_k(edges, simplices, np.array([0.4, 0.4, 0.3]), weights, solver="lemon")
+    with pytest.raises(ValueError, match=message):
+        calculate_m(edges, np.array([1, 0, 0]), weights, solver="lemon")
+
+
+def test_lemon_leaves_weights_beyond_its_range_to_highs():
+    edges, simplices = _triangle()
+    weights = np.array([1, 2**62, 1])
+    _, info = calculate_k(edges, simplices, np.array([0.4, 0.4, 0.3]), weights, return_info=True)
+    assert info.solver == "highs" and info.success
+    _, info = calculate_m(edges, np.array([1, 0, 0]), weights, return_info=True)
+    assert info.solver == "highs" and info.success
+
+
 def test_puma_leaves_consistent_phase_alone():
     psi = np.array([0.0, 0.5])
     edges = np.array([[0, 1]])
