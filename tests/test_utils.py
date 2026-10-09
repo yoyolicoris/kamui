@@ -12,11 +12,11 @@ from kamui.utils import (
 def _assert_valid_graph(edges, simplices, n_nodes):
     assert edges.ndim == 2 and edges.shape[1] == 2
     assert edges.min() >= 0 and edges.max() < n_nodes
-    directed = {tuple(e) for e in edges}
-    for simplex in simplices:
-        assert len(simplex) == 4
-        assert all(0 <= v < n_nodes for v in simplex)
-        for u, v in zip(simplex, simplex[1:] + simplex[:1]):
+    directed = {tuple(e) for e in edges.tolist()}
+    assert simplices.ndim == 2 and simplices.shape[1] == 4
+    assert simplices.min() >= 0 and simplices.max() < n_nodes
+    for simplex in simplices.tolist():
+        for u, v in zip(simplex, np.roll(simplex, -1).tolist()):
             assert (u, v) in directed or (v, u) in directed
 
 
@@ -54,8 +54,8 @@ def test_2d_cells_share_edges_in_opposite_directions(cyclical_axis):
     # other, so the cycle matrix is a network matrix without any reversals.
     edges, simplices = get_2d_edges_and_simplices((5, 6), cyclical_axis=cyclical_axis)
     directions = {}
-    for simplex in simplices:
-        for u, v in zip(simplex, simplex[1:] + simplex[:1]):
+    for simplex in simplices.tolist():
+        for u, v in zip(simplex, np.roll(simplex, -1).tolist()):
             key, sign = ((u, v), 1) if u < v else ((v, u), -1)
             directions.setdefault(key, []).append(sign)
     shared = [signs for signs in directions.values() if len(signs) == 2]

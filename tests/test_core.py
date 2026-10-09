@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import scipy.sparse as sp
 from scipy.spatial import Delaunay
 
 import kamui.core as core
@@ -141,6 +142,103 @@ def test_calculate_k_returns_none_when_infeasible(monkeypatch):
     edges, simplices = _triangle()
     monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
     assert calculate_k(edges, simplices, np.array([0.1, 0.1, -0.2]), solver="highs") is None
+
+
+def _reference_cycle_matrix(edges, simplices):
+    # the per-entry loop calculate_k used before #24, kept as the specification
+    edge_dict = {tuple(x): i for i, x in enumerate(edges.tolist())}
+    rows, cols, vals = [], [], []
+    for i, simplex in enumerate(simplices):
+        u = simplex[-1]
+        for v in simplex:
+            rows.append(i)
+            if (u, v) in edge_dict:
+                cols.append(edge_dict[(u, v)])
+                vals.append(1)
+            else:
+                cols.append(edge_dict[(v, u)])
+                vals.append(-1)
+            u = v
+    return sp.csr_matrix((vals, (rows, cols)), shape=(len(simplices), len(edges)))
+
+
+@pytest.mark.parametrize(
+    "case", ["Delaunay mesh", "cyclic grid", "mixed lengths", "both orientations"]
+)
+def test_cycle_matrix_matches_the_reference_loop(case):
+    if case == "Delaunay mesh":
+        edges, simplices, _ = _delaunay_mesh()
+        simplices = _reverse_some(simplices, seed=11)
+    elif case == "cyclic grid":
+        edges, simplices = get_2d_edges_and_simplices((5, 6), cyclical_axis=(0, 1))
+    elif case == "mixed lengths":
+        # a square and a triangle sharing edge (1, 2), and a cycle that walks (0, 1) twice
+        edges = np.array([[0, 1], [1, 2], [2, 3], [3, 0], [2, 4], [4, 1]])
+        simplices = [[0, 1, 2, 3], [1, 4, 2], [0, 1, 0, 1]]
+    else:
+        # both orientations of edge (0, 1) are listed: the forward one is used
+        edges = np.array([[0, 1], [1, 0], [1, 2], [2, 0]])
+        simplices = [[0, 1, 2], [1, 0, 2]]
+    expected = _reference_cycle_matrix(edges, simplices).toarray()
+    np.testing.assert_array_equal(core._cycle_matrix(edges, simplices).toarray(), expected)
+    if case == "cyclic grid":  # the (S, 4) array path
+        array = np.array(simplices)
+        np.testing.assert_array_equal(core._cycle_matrix(edges, array).toarray(), expected)
+
+
+def test_cycle_matrix_handles_shuffled_edges():
+    # enough out-of-order edges to take the quicksort path
+    edges, simplices = get_2d_edges_and_simplices((10, 10))
+    edges = edges[np.random.default_rng(12).permutation(len(edges))]
+    assert np.count_nonzero(np.diff(edges[:, 0] * 100 + edges[:, 1]) < 0) >= 64
+    expected = _reference_cycle_matrix(edges, simplices.tolist()).toarray()
+    np.testing.assert_array_equal(core._cycle_matrix(edges, simplices).toarray(), expected)
+
+
+@pytest.mark.parametrize("as_array", [False, True])
+@pytest.mark.parametrize("vertex", [1.5, 1.0])
+def test_cycle_matrix_requires_integer_vertex_indices(as_array, vertex):
+    # floats used to be truncated (1.5 -> 1) or matched by accident (1.0 == 1)
+    edges, _ = _triangle()
+    simplices = np.array([[0, vertex, 2]]) if as_array else [[0, vertex, 2]]
+    with pytest.raises(TypeError, match="simplices must hold integer vertex indices"):
+        core._cycle_matrix(edges, simplices)
+    with pytest.raises(TypeError, match="edges must hold integer vertex indices"):
+        core._cycle_matrix(edges.astype(float), [[0, 1, 2]])
+
+
+@pytest.mark.parametrize("as_array", [False, True])
+def test_cycle_matrix_rejects_negative_vertex_indices(as_array):
+    # -1 padding a short cycle: (2, -1) and (1, -1) have the codes of edges
+    # (1, 3) and (0, 3), so without the check this cycle was silently accepted
+    edges = np.array([[0, 3], [1, 2], [1, 3]])
+    simplices = np.array([[1, 2, -1]]) if as_array else [[1, 2, -1]]
+    with pytest.raises(ValueError, match="simplices must hold non-negative vertex indices"):
+        core._cycle_matrix(edges, simplices)
+    with pytest.raises(ValueError, match="edges must hold non-negative vertex indices"):
+        core._cycle_matrix(-edges, [[0, 1, 2]])
+
+
+def test_cycle_matrix_accepts_numpy_integer_vertices_in_lists():
+    edges, simplices = _triangle()
+    rows = [np.array(s, dtype=np.int32) for s in simplices]
+    expected = _reference_cycle_matrix(edges, simplices).toarray()
+    np.testing.assert_array_equal(core._cycle_matrix(edges, rows).toarray(), expected)
+
+
+def test_cycle_matrix_counts_long_repeated_cycles_without_wrapping():
+    # 256 laps of a triangle add 256 per edge, which int8 would wrap to 0
+    edges, _ = _triangle()
+    simplices = [[0, 1, 2] * 256]
+    expected = _reference_cycle_matrix(edges, simplices).toarray()
+    np.testing.assert_array_equal(expected, [[256, 256, 256]])
+    np.testing.assert_array_equal(core._cycle_matrix(edges, simplices).toarray(), expected)
+
+
+def test_cycle_matrix_gives_an_empty_cycle_an_empty_row():
+    edges, simplices = _triangle()
+    V = core._cycle_matrix(edges, [[], *simplices])
+    np.testing.assert_array_equal(V.toarray(), [[0, 0, 0], [1, 1, 1]])
 
 
 def _loop_sums(edges, simplices, values):
