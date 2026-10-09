@@ -234,8 +234,8 @@ def _cycle_steps(simplices: Iterable[Iterable[int]]) -> tuple[np.ndarray, np.nda
     takes the vectorized path; other iterables are flattened first.
     """
     if isinstance(simplices, np.ndarray) and simplices.ndim == 2:
-        heads = simplices.ravel().astype(np.int64)
-        tails = np.roll(simplices, 1, axis=1).ravel().astype(np.int64)
+        heads = simplices.ravel().astype(np.int64, copy=False)
+        tails = np.roll(simplices, 1, axis=1).ravel().astype(np.int64, copy=False)
         return tails, heads, np.full(len(simplices), simplices.shape[1])
     lengths = np.fromiter(map(len, simplices), dtype=np.int64, count=len(simplices))
     vertices = itertools.chain.from_iterable(simplices)
@@ -262,16 +262,19 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
     # edges, in near-linear time, but is slower than quicksort on shuffled codes.
     presorted = np.count_nonzero(np.diff(codes) < 0) < 64
     order = np.argsort(codes, kind="stable" if presorted else "quicksort")
-    if np.any(np.diff(codes[order]) == 0):
+    sorted_codes = codes[order]
+    if np.any(np.diff(sorted_codes) == 0):
         raise ValueError("edges must be unique")
     # a sentinel above every code, so that misses need no bounds check
-    sorted_codes = np.append(codes[order], np.iinfo(np.int64).max)
+    sorted_codes = np.append(sorted_codes, np.iinfo(np.int64).max)
     order = np.append(order, -1)
 
     def find(code: np.ndarray) -> np.ndarray:
         position = np.searchsorted(sorted_codes, code)
         missed = sorted_codes[position] != code
-        np.take(order, position, out=position)
+        # in place: the default mode="raise" would buffer the output anyway,
+        # and every position is in range thanks to the sentinel
+        np.take(order, position, out=position, mode="clip")
         position[missed] = -1
         return position
 
@@ -364,7 +367,8 @@ def calculate_k(
     simplices : (N,) iterable of simplices
         Each element lists the vertices of one elementary cycle; every
         consecutive pair (closing the loop) must appear in ``edges`` in
-        either direction.
+        either direction. An (N, k) integer array of equal-length cycles
+        is the fastest input.
     differences : (M,) np.ndarray
         Wrapped phase differences divided by the period; float or int.
     weights : (M,) np.ndarray, optional

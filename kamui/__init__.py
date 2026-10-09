@@ -177,7 +177,9 @@ def unwrap_arbitrary(
         The edges of the graph.
     simplices : (N,) iterable of simplices, optional
         Each element is a list of vertices that form a simplex (a.k.a elementary cycle).
-        The connections should be consistent with the edges.
+        The connections should be consistent with the edges. An (N, k)
+        integer array of equal-length cycles, such as Delaunay triangles or
+        the cycles of the grid builders, is the fastest input.
         This is also used to compute automatic weights for each edge.
         If not provided and method is "ilp", an edgelist-based ILP solver
         will be used without weighting.
