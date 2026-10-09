@@ -38,7 +38,7 @@ With `period=T`, replace $`2\pi`$ by $`T`$ throughout.
 On 2-D grids and planar meshes, every edge lies on at most two cycles. Kamui orients the cycles so that they traverse each shared edge in opposite directions, reversing any that do not; reversing a cycle negates both sides of its constraint, so the program does not change. $`A`$ is then the incidence matrix of the dual graph, which has one node per cycle and one more for the outside, and the program is a min-cost flow: the residues are the supplies and $`k_e`$ is the flow across edge $`e`$.
 Kamui solves these programs with the network simplex of the [LEMON](https://lemon.cs.elte.hu/) graph library, which is many times faster than a general LP solver. LEMON needs integer weights; see [Weights](#weights).
 
-Otherwise, Kamui solves the linear programming (LP) relaxation, with $`k \in \mathbb{R}^{M}`$, first.
+Otherwise, as on 3-D grids or with fractional weights, Kamui first solves the linear programming (LP) relaxation, with $`k \in \mathbb{R}^{M}`$, using HiGHS.
 For 2-D grids and planar meshes, $`A`$ is totally unimodular, so the LP optimum is already integral. The same is true of 3-D grids without a cyclical axis. Other inputs fall back to the integer program.
 Large inputs are still computationally heavy; see [Performance and memory](#performance-and-memory).
 
@@ -172,8 +172,7 @@ The edgelist ILP needs no cycles, because it optimizes vertex offsets $`m \in \m
 
 The term inside the absolute value is the edge ambiguity $`k_e`$. This is therefore the cost of the simplex ILP, optimized over offsets instead of ambiguities. The two optima agree whenever the cycles cover every loop of the graph, as grid cells and mesh triangles do.
 
-Its LP dual is a min-cost circulation on the graph itself, with a flow $`y_e \in [-w_e, w_e]`$ along each edge that maximizes $`\sum_e y_e \, 	ext{round}\left( (\psi_v - \psi_u) / 2\pi 
-ight)`$. LEMON solves that circulation, and its node potentials are an optimal $`m`$.
+Its LP dual is a min-cost circulation on the graph itself, with a flow $`y_e \in [-w_e, w_e]`$ along each edge that maximizes $`\sum_e y_e \, \text{round}\left( (\psi_v - \psi_u) / 2\pi \right)`$. LEMON solves that circulation, and its node potentials are an optimal $`m`$.
 
 PUMA instead uses graph cuts to minimize the $`p`$-norm of the unwrapped differences:
 

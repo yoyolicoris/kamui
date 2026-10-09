@@ -50,9 +50,8 @@ def test_2d_short_axes_are_already_cyclical():
 
 @pytest.mark.parametrize("cyclical_axis", [(), 0, 1, (0, 1)])
 def test_2d_cells_share_edges_in_opposite_directions(cyclical_axis):
-    # A consistent orientation makes the cycle matrix a network matrix, which
-    # the min-cost-flow solver relies on: every edge on two cells must be
-    # traversed forwards by one and backwards by the other.
+    # Every edge on two cells is traversed forwards by one and backwards by the
+    # other, so the cycle matrix is a network matrix without any reversals.
     edges, simplices = get_2d_edges_and_simplices((5, 6), cyclical_axis=cyclical_axis)
     directions = {}
     for simplex in simplices:
@@ -93,8 +92,7 @@ def test_merge_weights_uses_weights_as_given():
 
 
 def test_merge_weights_keeps_integer_weights_integer_without_overflow():
-    # no float cast: integers stay integers for LEMON, and NumPy widens
-    # small integer types when summing
+    # integers stay integers for LEMON, and NumPy widens small types when summing
     weights = np.array([200, 100, 3], dtype=np.uint8)
     edges = np.array([[0, 1], [1, 2]])
     out = _merge_weights(weights, edges, "sum")
@@ -113,7 +111,7 @@ def test_merge_weights_nan_becomes_zero(merging_method):
 
 @pytest.mark.parametrize("merging_method", ["mean", "median"])
 def test_merge_weights_rejects_bad_merging_method(merging_method):
-    # "mean" is dropped: it unwraps like "sum" but turns odd integer sums into fractions
+    # "mean" unwraps like "sum" but turns odd integer sums into fractions
     with pytest.raises(ValueError, match="merging_method must be"):
         _merge_weights(np.ones((2, 2)), np.array([[0, 1]]), merging_method)
 

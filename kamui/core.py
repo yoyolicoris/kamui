@@ -2,8 +2,8 @@
 
 :func:`integrate` walks a directed graph accumulating edge weights,
 :func:`calculate_k` and :func:`calculate_m` solve the two ILP formulations
-with HiGHS, and :func:`puma` runs the graph-cut PUMA algorithm when
-PyMaxflow is installed.
+as min-cost flows with LEMON where they can and with HiGHS otherwise, and
+:func:`puma` runs the graph-cut PUMA algorithm when PyMaxflow is installed.
 """
 
 from collections.abc import Iterable
@@ -81,7 +81,7 @@ def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np
     virtual root joined to one cycle per component. Returns None if no
     reversal works, as on a Möbius strip.
     """
-    if a.size == 0:
+    if not same.any():  # already consistent, as kamui's own grids are
         return np.zeros(N, dtype=bool)
     pairs = np.column_stack((np.minimum(a, b), np.maximum(a, b)))
     pairs, first = np.unique(pairs, axis=0, return_index=True)
@@ -102,19 +102,17 @@ def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np
 
 
 def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Return the dual-graph arc of each edge, or None if V is not a network matrix.
+    """Return the dual-graph arc of each edge and the cycles to reverse, or None.
 
     Each cycle becomes a node, and node ``N`` stands for the outside of all
     cycles. Edge ``e`` runs from the cycle that traverses it forwards
     (``V[c, e] == 1``) to the one that traverses it backwards (``-1``), or to
-    node ``N`` if only one cycle contains it. That needs every edge on at most
-    two cycles, in opposite directions, as on 2-D grids and planar meshes.
-    Edges on no cycle get no arc (-1).
-
-    Cycles that traverse a shared edge the same way are first reversed where
-    `_orient_cycles` can make every shared edge run both ways; the returned
-    mask marks them. Reversing cycle ``c`` negates row ``c`` of V and its
-    residue, which leaves the program unchanged.
+    node ``N`` if only one cycle contains it; edges on no cycle get no arc
+    (-1). That needs every edge on at most two cycles, as on 2-D grids and
+    planar meshes, traversed in opposite directions once the cycles in the
+    returned mask are reversed. Reversing cycle ``c`` negates row ``c`` of V
+    and its residue, which leaves the program unchanged. Returns None when
+    no such arcs exist.
     """
     N, M = V.shape
     V = V.tocsc()
@@ -176,14 +174,15 @@ def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> n
 
     The LP dual of this program is a circulation: a flow ``y[e]`` in
     ``[-w[e], w[e]]`` from u to v, conserved at every vertex, maximizing
-    ``d @ y``. LEMON takes non-negative costs only, so each edge becomes one
-    arc that carries ``g = w - sign(d) * y`` in ``[0, 2 w]`` at cost ``|d|``:
-    from v to u when ``d >= 0``, else from u to v, with the fixed flow
-    ``sign(d) * w`` from u to v moved into the supplies. The reduced cost of
-    that arc is then ``|m[v] - m[u] + d|`` with the right sign, so
-    complementary slackness makes LEMON's potentials an optimal m. A
-    circulation always exists (``g = w``), so the flow is never infeasible.
-    The weights must be non-negative integers.
+    ``d @ y``. LEMON takes non-negative costs only, so with ``s = 1`` where
+    ``d >= 0`` and ``-1`` elsewhere, each edge becomes one arc that carries
+    ``g = w - s * y`` in ``[0, 2 w]`` at cost ``|d|``: from v to u when
+    ``s = 1``, else from u to v, with the fixed flow ``s * w`` from u to v
+    moved into the supplies. With ``m`` set to LEMON's potentials, that
+    arc's reduced cost is ``s * (m[v] - m[u] + d)``, so complementary
+    slackness makes the potentials an optimal m. A circulation always
+    exists (``g = w``), so the flow is never infeasible. The weights must
+    be non-negative integers.
     """
     u, v = edges[:, 0].astype(np.int64), edges[:, 1].astype(np.int64)
     d, w = d.astype(np.int64), w.astype(np.int64)
@@ -261,14 +260,16 @@ def calculate_k(
 
     Finds per-edge integers ``k`` such that the corrected differences
     ``differences + k`` sum to zero around every simplex, minimizing the
-    weighted L1 norm of ``k`` through HiGHS.
+    weighted L1 norm of ``k``.
 
-    The LP relaxation is solved first and kept when its optimum is
-    integral. That holds for 2-D grids (cyclical axes included) and planar
-    meshes, whose cycle matrices are totally unimodular, and for 3-D grids
-    without a cyclical axis when ``differences`` are wrapped phase
-    differences. Other cycle sets, such as 3-D grids with a cyclical axis,
-    can have fractional optima and are re-solved as an integer program.
+    LEMON solves the program as a min-cost flow on the dual graph when
+    every edge lies on at most two cycles. Otherwise HiGHS solves the LP
+    relaxation first and keeps it when its optimum is integral. That holds
+    for totally unimodular cycle matrices, such as those of 2-D grids and
+    planar meshes, and for 3-D grids without a cyclical axis when
+    ``differences`` are wrapped phase differences. Other cycle sets, such as
+    3-D grids with a cyclical axis, can have fractional optima and are
+    re-solved as an integer program.
 
     Parameters
     ----------

@@ -78,7 +78,7 @@ def get_2d_edges_and_simplices(
             # Orient the wrap-around cells like the interior ones, which step
             # down axis 0 first: across axis 0 that means starting from the
             # last row, so every edge two cells share is traversed in opposite
-            # directions (as the min-cost-flow solver requires).
+            # directions and LEMON needs no cycle reversals.
             pairs.append((last, first) if ax == 0 else (first, last))
         simplices += np.concatenate(
             tuple(
@@ -215,12 +215,11 @@ def get_3d_edges_and_simplices(
 
 def _merge_weights(
     weights: npt.NDArray, edges: npt.NDArray[np.int_], merging_method: str
-) -> npt.NDArray[np.floating]:
-    """Combine the two vertex weights of each edge, as given, without rescaling.
+) -> npt.NDArray:
+    """Combine each edge's two vertex weights by "sum", "min" or "max", without rescaling.
 
-    One of "sum", "min" or "max"; edges that touch a NaN weight get 0.
-    Scaling every weight by one factor leaves the unwrapping unchanged, and
-    all three keep integer weights integer for LEMON.
+    Edges that touch a NaN weight get 0. Integer weights stay integer, as
+    LEMON needs.
     """
     merge = {"sum": np.sum, "min": np.min, "max": np.max}.get(merging_method)
     if merge is None:

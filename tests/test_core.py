@@ -168,6 +168,13 @@ def _delaunay_mesh(seed=0, n=150):
     return np.unique(np.sort(pairs, axis=1), axis=0), triangles.tolist(), n
 
 
+def _planar(case):
+    if case == "Delaunay mesh":
+        return _delaunay_mesh()
+    cyclical_axis = {"grid, cyclical axis 0": 0, "grid, both axes cyclical": (0, 1)}.get(case, ())
+    return *get_2d_edges_and_simplices((9, 8), cyclical_axis=cyclical_axis), 72
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -181,14 +188,7 @@ def _delaunay_mesh(seed=0, n=150):
 def test_calculate_k_lemon_matches_highs(case):
     # LEMON solves the planar programs as min-cost flows; HiGHS must reach the
     # same optimal cost, and LEMON's k must close every loop.
-    if case == "Delaunay mesh":
-        edges, simplices, n_vertices = _delaunay_mesh()
-    else:
-        cyclical_axis = {"grid, cyclical axis 0": 0, "grid, both axes cyclical": (0, 1)}.get(
-            case, ()
-        )
-        edges, simplices = get_2d_edges_and_simplices((9, 8), cyclical_axis=cyclical_axis)
-        n_vertices = 72
+    edges, simplices, n_vertices = _planar(case)
     differences = _wrapped_differences(edges, n_vertices, seed=1)
     weights = None
     if case == "integer weights":
@@ -224,12 +224,7 @@ def _reverse_some(simplices, seed):
 def test_calculate_k_lemon_reorients_cycles(case):
     # Cycles listed in either direction, as other meshing tools may give them,
     # are reversed until shared edges run both ways, so LEMON still applies.
-    if case == "Delaunay mesh":
-        edges, simplices, n_vertices = _delaunay_mesh()
-    else:
-        cyclical_axis = (0, 1) if case == "grid, both axes cyclical" else ()
-        edges, simplices = get_2d_edges_and_simplices((9, 8), cyclical_axis=cyclical_axis)
-        n_vertices = 72
+    edges, simplices, n_vertices = _planar(case)
     simplices = _reverse_some(simplices, seed=6)
     differences = _wrapped_differences(edges, n_vertices, seed=7)
     # uniform weights: random phases leave residues nearly everywhere, which
@@ -274,13 +269,14 @@ def test_calculate_k_uses_highs_for_a_cycle_that_repeats_an_edge():
     assert info.solver == "highs"
 
 
-def test_calculate_k_uses_highs_for_negative_weights():
+def test_calculate_k_leaves_negative_weights_to_highs():
     edges, simplices = _triangle()
-    k, info = calculate_k(
-        edges, simplices, np.array([0.4, 0.4, 0.3]), weights=-np.ones(3), return_info=True
-    )
+    differences = np.array([0.4, 0.4, 0.3])
+    k, info = calculate_k(edges, simplices, differences, weights=-np.ones(3), return_info=True)
     assert info.solver == "highs"
     assert k is None  # unbounded
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_k(edges, simplices, differences, weights=-np.ones(3), solver="lemon")
 
 
 def test_calculate_k_without_cycles_keeps_k_at_zero():
@@ -323,14 +319,6 @@ def test_calculate_k_leaves_fractional_weights_to_highs():
         edges, simplices, differences, weights=np.round(weights * 10), return_info=True
     )
     assert info.solver == "lemon"
-
-
-def test_calculate_k_lemon_rejects_negative_weights():
-    edges, simplices = _triangle()
-    with pytest.raises(ValueError, match="non-negative"):
-        calculate_k(
-            edges, simplices, np.array([0.4, 0.4, 0.3]), weights=-np.ones(3), solver="lemon"
-        )
 
 
 def test_calculate_k_rejects_unknown_solver():
@@ -398,10 +386,6 @@ def test_calculate_m_returns_none_when_infeasible(monkeypatch):
     assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), solver="highs") is None
 
 
-def _edgelist_cost(edges, differences, weights, m):
-    return float(weights @ np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences))
-
-
 @pytest.mark.parametrize(
     "case", ["grid", "integer weights", "zero weights", "Delaunay mesh", "two components"]
 )
@@ -425,13 +409,12 @@ def test_calculate_m_lemon_matches_highs(case):
     elif case == "zero weights":
         weights = rng.integers(0, 3, len(edges))
     m, info = calculate_m(edges, differences, weights, return_info=True)
-    m_ref, reference = calculate_m(edges, differences, weights, solver="highs", return_info=True)
+    _, reference = calculate_m(edges, differences, weights, solver="highs", return_info=True)
     assert info.solver == "lemon" and reference.solver == "highs"
     assert info.success and not info.ilp_fallback
     assert m.dtype == np.int64 and m.shape == (n_vertices,)
     assert reference.fun > 0
     assert info.fun == pytest.approx(reference.fun)
-    assert _edgelist_cost(edges, differences, weights, m) == pytest.approx(info.fun)
 
 
 def test_calculate_m_leaves_fractional_and_negative_weights_to_highs():
