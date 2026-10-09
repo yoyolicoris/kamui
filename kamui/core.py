@@ -57,30 +57,22 @@ def _check_solver(solver: str) -> None:
         raise ValueError(f"solver must be 'auto', 'highs' or 'lemon'; got {solver!r}")
 
 
-def _lemon_takes(w: np.ndarray, solver: str) -> bool:
-    """Return whether LEMON can take the weights w exactly; with solver="lemon", raise if not.
+def _lemon_rejects(w: np.ndarray) -> str | None:
+    """Return what LEMON needs that the weights w lack, or None if it can take them exactly.
 
     Integer dtypes are exact as they are; floats must be finite whole
     numbers. Weights must also stay below 2**62, pylmcf's cost limit, which
     also keeps `calculate_m`'s capacities of twice the weight within int64.
     """
-    if solver == "highs":
-        return False
-    integer = np.issubdtype(w.dtype, np.integer) or (
+    if not np.issubdtype(w.dtype, np.integer) and not (
         np.isfinite(w).all() and np.array_equal(w, np.round(w))
-    )
-    non_negative = np.min(w, initial=0) >= 0
-    in_range = np.max(w, initial=0) < 2**62
-    if solver == "lemon" and not integer:
-        raise ValueError(
-            "solver='lemon' needs finite integer weights; scale and round them first, "
-            "e.g. np.round(weights * 1000)"
-        )
-    if solver == "lemon" and not non_negative:
-        raise ValueError("solver='lemon' needs non-negative weights")
-    if solver == "lemon" and not in_range:
-        raise ValueError("solver='lemon' needs weights below 2**62")
-    return integer and non_negative and in_range
+    ):
+        return "finite integer weights; scale and round them first, e.g. np.round(weights * 1000)"
+    if np.min(w, initial=0) < 0:
+        return "non-negative weights"
+    if np.max(w, initial=0) >= 2**62:
+        return "weights below 2**62"
+    return None
 
 
 def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np.ndarray | None:
@@ -375,12 +367,18 @@ def calculate_k(
     else:
         w = np.asarray(weights)
 
-    arcs = _dual_graph_arcs(V) if _lemon_takes(w, solver) else None
-    if solver == "lemon" and arcs is None:
-        raise ValueError(
-            "solver='lemon' needs every edge on at most two cycles, and cycles that can "
-            "be oriented to traverse each shared edge in opposite directions"
-        )
+    arcs = None
+    if solver != "highs":
+        missing = _lemon_rejects(w)
+        if missing is None:
+            arcs = _dual_graph_arcs(V)
+            if arcs is None:
+                missing = (
+                    "every edge on at most two cycles, and cycles that can be oriented to "
+                    "traverse each shared edge in opposite directions"
+                )
+        if solver == "lemon" and missing:
+            raise ValueError(f"solver='lemon' needs {missing}")
     if arcs is not None:
         tail, head, reverse = arcs
         try:
@@ -471,17 +469,23 @@ def calculate_m(
         weights = np.ones((M,), dtype=np.int64)
 
     w = np.asarray(weights)
-    if _lemon_takes(w, solver):
-        m = _solve_offsets_by_flow(edges, differences, w)
-        info = OptimizeResult(
-            fun=float(np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences) @ w.astype(np.float64)),
-            success=True,
-            status=0,
-            message="Optimal node potentials found by LEMON's network simplex.",
-            ilp_fallback=False,
-            solver="lemon",
-        )
-        return (m, info) if return_info else m
+    if solver != "highs":
+        missing = _lemon_rejects(w)
+        if solver == "lemon" and missing:
+            raise ValueError(f"solver='lemon' needs {missing}")
+        if missing is None:
+            m = _solve_offsets_by_flow(edges, differences, w)
+            info = OptimizeResult(
+                fun=float(
+                    np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences) @ w.astype(np.float64)
+                ),
+                success=True,
+                status=0,
+                message="Optimal node potentials found by LEMON's network simplex.",
+                ilp_fallback=False,
+                solver="lemon",
+            )
+            return (m, info) if return_info else m
 
     vals = np.concatenate((np.ones((M,), dtype=np.int64), -np.ones((M,), dtype=np.int64)))
     rows = np.tile(np.arange(M), 2)
