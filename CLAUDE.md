@@ -41,7 +41,7 @@ The package has three modules.
     - **HiGHS path:** splits `k = x⁺ − x⁻` into non-negative variables and solves the LP.
   - `calculate_m` solves for per-vertex offsets from an integer difference array. On LEMON, `_solve_offsets_by_flow` solves the LP dual, a min-cost circulation, and reads `m` off pylmcf's node potentials.
   - On the HiGHS path, both go through `_solve_integer_program`. It solves the LP relaxation (`scipy.optimize.linprog`) and re-solves with `integrality=1` only if the LP optimum is fractional; the `ilp_fallback` flag records when that happened.
-  - pylmcf requires arcs sorted by (start, end) and non-negative int64 costs. The helpers lexsort the arcs and map flows back.
+  - pylmcf requires arcs sorted by (start, end) and non-negative int64 costs. `_sorted_graph` sorts the arcs with one argsort and the helpers map flows back. LEMON's int64 sums limit weights to a total below 2**61.
   - `integrate` recovers the phase. `unwrap_arbitrary` passes it each edge in both directions; it accumulates the corrected differences along a BFS spanning tree, with pointer jumping. Accumulating in DFS visit order was a past bug (#22).
   - `puma` needs the optional `PyMaxflow`. The `extra` extra installs it, and it is always present in the test environments.
 

@@ -61,8 +61,10 @@ def _lemon_rejects(w: np.ndarray) -> str | None:
     """Return what LEMON needs that the weights w lack, or None if it can take them exactly.
 
     Integer dtypes are exact as they are; floats must be finite whole
-    numbers. Weights must also stay below 2**62, pylmcf's cost limit, which
-    also keeps `calculate_m`'s capacities of twice the weight within int64.
+    numbers. The weights must also sum to less than 2**61, so that nothing
+    LEMON adds up overflows int64: its potentials add path costs to an
+    artificial cost of 2**62, and `calculate_m`'s supplies add up twice the
+    weights of each vertex's edges.
     """
     if not np.issubdtype(w.dtype, np.integer) and not (
         np.isfinite(w).all() and np.array_equal(w, np.round(w))
@@ -70,8 +72,8 @@ def _lemon_rejects(w: np.ndarray) -> str | None:
         return "finite integer weights; scale and round them first, e.g. np.round(weights * 1000)"
     if np.min(w, initial=0) < 0:
         return "non-negative weights"
-    if np.max(w, initial=0) >= 2**62:
-        return "weights below 2**62"
+    if np.sum(w, dtype=np.float64) >= 2**61:
+        return "weights that sum to less than 2**61"
     return None
 
 
@@ -326,8 +328,8 @@ def calculate_k(
     ValueError
         If the edges are not unique, the simplices use an edge not in
         ``edges``, ``solver`` is unknown, or ``solver="lemon"`` and the
-        weights are not non-negative integers below 2**62 or the cycles do
-        not form a min-cost flow.
+        weights are not non-negative integers that sum to less than 2**61,
+        or the cycles do not form a min-cost flow.
     """
     _check_solver(solver)
     M, N = edges.shape[0], len(simplices)
@@ -458,7 +460,7 @@ def calculate_m(
         If ``differences`` does not have an integer dtype.
     ValueError
         If ``solver`` is unknown, or ``solver="lemon"`` and the weights are
-        not non-negative integers below 2**62.
+        not non-negative integers that sum to less than 2**61.
     """
     _check_solver(solver)
     if not np.issubdtype(differences.dtype, np.integer):

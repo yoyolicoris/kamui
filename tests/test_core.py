@@ -451,7 +451,7 @@ def test_lemon_keeps_large_integer_weights_exact():
 
 
 @pytest.mark.parametrize(
-    ("weight", "message"), [(np.inf, "finite integer"), (2.0**62, "below 2\\*\\*62")]
+    ("weight", "message"), [(np.inf, "finite integer"), (2.0**61, "sum to less than 2\\*\\*61")]
 )
 def test_lemon_rejects_weights_it_cannot_take_exactly(weight, message):
     edges, simplices = _triangle()
@@ -462,13 +462,20 @@ def test_lemon_rejects_weights_it_cannot_take_exactly(weight, message):
         calculate_m(edges, np.array([1, 0, 0]), weights, solver="lemon")
 
 
-def test_lemon_leaves_weights_beyond_its_range_to_highs():
-    edges, simplices = _triangle()
-    weights = np.array([1, 2**62, 1])
-    _, info = calculate_k(edges, simplices, np.array([0.4, 0.4, 0.3]), weights, return_info=True)
-    assert info.solver == "highs" and info.success
-    _, info = calculate_m(edges, np.array([1, 0, 0]), weights, return_info=True)
-    assert info.solver == "highs" and info.success
+def test_lemon_leaves_weights_that_overflow_its_sums_to_highs():
+    # Each weight is below pylmcf's 2**62 cost limit, but on an 8x8 grid LEMON
+    # reported calculate_k's feasible flow as infeasible, and calculate_m's
+    # vertex supplies overflowed int64. Such weights now go to HiGHS, which
+    # reports for itself whether it can solve them.
+    edges, simplices = get_2d_edges_and_simplices((8, 8))
+    differences = _wrapped_differences(edges, 64, seed=10)
+    weights = np.full(len(edges), 2**61)
+    _, info = calculate_k(edges, simplices, differences, weights, return_info=True)
+    assert info.solver == "highs"
+    _, info = calculate_m(
+        edges, np.round(differences * 3).astype(np.int64), weights, return_info=True
+    )
+    assert info.solver == "highs"
 
 
 def test_puma_leaves_consistent_phase_alone():
