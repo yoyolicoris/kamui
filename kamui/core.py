@@ -227,6 +227,15 @@ def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> n
     return graph.potentials()
 
 
+def _vertex_indices(values: np.ndarray, name: str) -> np.ndarray:
+    """Return values as int64, raising ValueError unless they are whole numbers."""
+    if not np.issubdtype(values.dtype, np.integer) and not (
+        np.isfinite(values).all() and np.array_equal(values, np.round(values))
+    ):
+        raise ValueError(f"{name} must hold integer vertex indices")
+    return values.astype(np.int64, copy=False)
+
+
 def _cycle_steps(simplices: Iterable[Iterable[int]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return each step u -> v around the cycles, end to end, and the length of each cycle.
 
@@ -234,12 +243,15 @@ def _cycle_steps(simplices: Iterable[Iterable[int]]) -> tuple[np.ndarray, np.nda
     takes the vectorized path; other iterables are flattened first.
     """
     if isinstance(simplices, np.ndarray) and simplices.ndim == 2:
-        heads = simplices.ravel().astype(np.int64, copy=False)
-        tails = np.roll(simplices, 1, axis=1).ravel().astype(np.int64, copy=False)
-        return tails, heads, np.full(len(simplices), simplices.shape[1])
+        cycles = _vertex_indices(simplices, "simplices")
+        tails = np.roll(cycles, 1, axis=1).ravel()
+        return tails, cycles.ravel(), np.full(len(cycles), cycles.shape[1])
     lengths = np.fromiter(map(len, simplices), dtype=np.int64, count=len(simplices))
+    # read as floats, which hold every realistic vertex index exactly, so that
+    # fractional ones are rejected rather than truncated
     vertices = itertools.chain.from_iterable(simplices)
-    heads = np.fromiter(vertices, dtype=np.int64, count=int(lengths.sum()))
+    flat = np.fromiter(vertices, dtype=np.float64, count=int(lengths.sum()))
+    heads = _vertex_indices(flat, "simplices")
     ends = np.cumsum(lengths)
     closed = lengths > 0
     previous = np.arange(-1, heads.size - 1)
@@ -255,9 +267,10 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
     ``u * n + v`` in one sorted array, the forward direction first.
     """
     M = len(edges)
+    edges = _vertex_indices(np.asarray(edges), "edges")
     tails, heads, lengths = _cycle_steps(simplices)
     n = max(int(np.max(edges, initial=-1)), int(np.max(heads, initial=-1))) + 1
-    codes = edges[:, 0].astype(np.int64) * n + edges[:, 1]
+    codes = edges[:, 0] * n + edges[:, 1]
     # Timsort merges presorted runs, such as a grid's horizontal and vertical
     # edges, in near-linear time, but is slower than quicksort on shuffled codes.
     presorted = np.count_nonzero(np.diff(codes) < 0) < 64
@@ -279,7 +292,8 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
         return position
 
     cols = find(tails * n + heads)
-    vals = np.where(cols >= 0, 1, -1).astype(np.int8)
+    # a cycle's entries add up to at most its length, so int8 cannot wrap below 128
+    vals = np.where(cols >= 0, 1, -1).astype(np.int8 if lengths.max(initial=0) < 128 else np.int64)
     backwards = np.flatnonzero(cols < 0)
     cols[backwards] = find(heads[backwards] * n + tails[backwards])
     if np.any(cols < 0):

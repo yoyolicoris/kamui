@@ -195,6 +195,36 @@ def test_cycle_matrix_handles_shuffled_edges():
     np.testing.assert_array_equal(core._cycle_matrix(edges, simplices).toarray(), expected)
 
 
+@pytest.mark.parametrize("as_array", [False, True])
+def test_cycle_matrix_rejects_fractional_vertex_indices(as_array):
+    # 1.5 used to be truncated to vertex 1, silently solving another graph
+    edges, _ = _triangle()
+    simplices = np.array([[0, 1.5, 2]]) if as_array else [[0, 1.5, 2]]
+    with pytest.raises(ValueError, match="simplices must hold integer vertex indices"):
+        core._cycle_matrix(edges, simplices)
+    with pytest.raises(ValueError, match="edges must hold integer vertex indices"):
+        core._cycle_matrix(edges + 0.5, [[0, 1, 2]])
+
+
+@pytest.mark.parametrize("as_array", [False, True])
+def test_cycle_matrix_accepts_whole_float_vertex_indices(as_array):
+    edges, simplices = _triangle()
+    floats = np.array(simplices, dtype=float) if as_array else [[0.0, 1.0, 2.0]]
+    expected = _reference_cycle_matrix(edges, simplices).toarray()
+    np.testing.assert_array_equal(
+        core._cycle_matrix(edges.astype(float), floats).toarray(), expected
+    )
+
+
+def test_cycle_matrix_counts_long_repeated_cycles_without_wrapping():
+    # 256 laps of a triangle add 256 per edge, which int8 would wrap to 0
+    edges, _ = _triangle()
+    simplices = [[0, 1, 2] * 256]
+    expected = _reference_cycle_matrix(edges, simplices).toarray()
+    np.testing.assert_array_equal(expected, [[256, 256, 256]])
+    np.testing.assert_array_equal(core._cycle_matrix(edges, simplices).toarray(), expected)
+
+
 def test_cycle_matrix_gives_an_empty_cycle_an_empty_row():
     edges, simplices = _triangle()
     V = core._cycle_matrix(edges, [[], *simplices])
