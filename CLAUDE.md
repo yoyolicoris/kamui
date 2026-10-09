@@ -29,7 +29,7 @@ CI runs Pixi with `locked: true`. After editing `pixi.toml`, run `pixi install` 
 The package has three modules.
 
 - **`kamui/__init__.py`** holds the public entry points.
-  - `unwrap_dimensional` builds the grid graph, turns per-pixel `weights` into per-edge weights (fractions in [0.1, 1]; `weight_scale` scales and rounds them to integers so LEMON can take them), and hands off to `unwrap_arbitrary`.
+  - `unwrap_dimensional` builds the grid graph, turns per-pixel `weights` into per-edge weights with `prepare_weights` (sum of the two pixels by default, used as given without rescaling, NaN → 0), and hands off to `unwrap_arbitrary`.
   - `unwrap_arbitrary` picks the solver:
     - `method="ilp"` with simplices: the simplex ILP (`calculate_k`).
     - `method="ilp"` without simplices: the edgelist ILP (`calculate_m`).

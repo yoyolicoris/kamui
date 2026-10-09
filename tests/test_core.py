@@ -48,7 +48,7 @@ def _triangle():
 def test_calculate_k_recovers_loop_residue():
     edges, simplices = _triangle()
     differences = np.array([0.4, 0.4, 0.3])  # loop sum 1.1, so the residue is 1
-    k = calculate_k(edges, simplices, differences, adaptive_weighting=False)
+    k = calculate_k(edges, simplices, differences, weights=np.ones(3))
     assert k is not None
     assert k.sum() == -1
     assert np.abs(k).sum() == 1
@@ -57,10 +57,9 @@ def test_calculate_k_recovers_loop_residue():
 def test_calculate_k_weight_options_agree_on_trivial_loop():
     edges, simplices = _triangle()
     differences = np.array([0.1, 0.1, -0.2])  # loop sum 0, so k is 0
-    k_adaptive = calculate_k(edges, simplices, differences)
-    k_uniform = calculate_k(edges, simplices, differences, adaptive_weighting=False)
+    k_default = calculate_k(edges, simplices, differences)
     k_weighted = calculate_k(edges, simplices, differences, weights=np.ones(3))
-    for k in (k_adaptive, k_uniform, k_weighted):
+    for k in (k_default, k_weighted):
         np.testing.assert_array_equal(k, [0, 0, 0])
 
 
@@ -234,10 +233,11 @@ def test_calculate_k_lemon_reorients_cycles(case):
     simplices = _reverse_some(simplices, seed=6)
     differences = _wrapped_differences(edges, n_vertices, seed=7)
     # uniform weights: random phases leave residues nearly everywhere, which
-    # can zero every adaptive weight and make any k optimal
-    k, info = calculate_k(edges, simplices, differences, adaptive_weighting=False, return_info=True)
+    # can zero every default weight and make any k optimal
+    uniform = np.ones(len(edges))
+    k, info = calculate_k(edges, simplices, differences, weights=uniform, return_info=True)
     _, reference = calculate_k(
-        edges, simplices, differences, adaptive_weighting=False, solver="highs", return_info=True
+        edges, simplices, differences, weights=uniform, solver="highs", return_info=True
     )
     assert info.solver == "lemon" and info.success
     assert reference.fun > 0

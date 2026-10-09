@@ -69,38 +69,29 @@ def test_unwrap_dimensional_weights_and_start_pixel():
 
 
 @pytest.mark.parametrize("use_edgelist", [False, True])
-def test_unwrap_dimensional_weight_scale_lets_lemon_take_weights(use_edgelist):
+def test_unwrap_dimensional_integer_weights_reach_lemon(use_edgelist):
     rng = np.random.default_rng(4)
     true = _ramp_2d(12, 12) + rng.normal(0, 1.3, (12, 12))
-    weights = rng.uniform(0.2, 1.0, true.shape)
+    coherence = rng.uniform(0.2, 1.0, true.shape)
     wrapped = wrap_difference(true)
-    # the rescaled weights are fractions, so without weight_scale they go to HiGHS
+    # fractional weights go to HiGHS, and raise with solver="lemon"
     _, info = unwrap_dimensional(
-        wrapped, weights=weights, use_edgelist=use_edgelist, return_info=True
+        wrapped, weights=coherence, use_edgelist=use_edgelist, return_info=True
     )
     assert info.solver == "highs"
     with pytest.raises(ValueError, match="integer weights"):
-        unwrap_dimensional(wrapped, weights=weights, use_edgelist=use_edgelist, solver="lemon")
+        unwrap_dimensional(wrapped, weights=coherence, use_edgelist=use_edgelist, solver="lemon")
+    # integer pixel weights stay integer per edge, so LEMON takes them
+    weights = np.round(coherence * 100)
     result, info = unwrap_dimensional(
-        wrapped, weights=weights, weight_scale=1000, use_edgelist=use_edgelist, return_info=True
+        wrapped, weights=weights, use_edgelist=use_edgelist, return_info=True
     )
     _, reference = unwrap_dimensional(
-        wrapped,
-        weights=weights,
-        weight_scale=1000,
-        use_edgelist=use_edgelist,
-        solver="highs",
-        return_info=True,
+        wrapped, weights=weights, use_edgelist=use_edgelist, solver="highs", return_info=True
     )
     assert info.solver == "lemon" and info.success
     assert info.fun == pytest.approx(reference.fun)
     np.testing.assert_allclose(wrap_difference(result - wrapped), 0, atol=1e-9)
-
-
-@pytest.mark.parametrize("weight_scale", [0, -10])
-def test_unwrap_dimensional_rejects_non_positive_weight_scale(weight_scale):
-    with pytest.raises(ValueError, match="weight_scale must be positive"):
-        unwrap_dimensional(np.zeros((4, 4)), weights=np.ones((4, 4)), weight_scale=weight_scale)
 
 
 def test_unwrap_dimensional_cyclical():
@@ -220,7 +211,7 @@ def test_unwrap_arbitrary_reports_matching_costs_on_both_ilp_paths():
     psi = wrap_difference(true).ravel()
     edges, simplices = get_2d_edges_and_simplices((12, 12))
     with_cycles, info_k = unwrap_arbitrary(
-        psi, edges, simplices, adaptive_weighting=False, return_info=True
+        psi, edges, simplices, weights=np.ones(len(edges)), return_info=True
     )
     edgelist, info_m = unwrap_arbitrary(psi, edges, None, return_info=True)
     assert info_k.success and info_m.success

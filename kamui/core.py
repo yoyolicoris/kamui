@@ -253,7 +253,6 @@ def calculate_k(
     simplices: Iterable[Iterable[int]],
     differences: np.ndarray,
     weights: np.ndarray | None = None,
-    adaptive_weighting: bool = True,
     *,
     solver: str = "auto",
     return_info: bool = False,
@@ -283,20 +282,17 @@ def calculate_k(
         Wrapped phase differences divided by the period; float or int.
     weights : (M,) np.ndarray, optional
         Per-edge weights. When None, each edge is weighted by its number of
-        incident simplices with zero residue if ``adaptive_weighting`` is
-        set, else uniformly. Defaults to None.
-    adaptive_weighting : bool, optional
-        Weight edges by incident zero-residue simplex counts.
-        Defaults to True.
+        incident simplices with zero residue; pass ``np.ones(M)`` for
+        uniform weights. Defaults to None.
     solver : {"auto", "highs", "lemon"}, optional
         "lemon" solves the program as a min-cost flow with LEMON's network
         simplex, through pylmcf. It needs every edge on at most two cycles,
-        traversed in opposite directions, as on 2-D grids and planar
-        meshes, and non-negative integer weights. The default adaptive and
-        uniform weights are integers; to use fractional weights, scale and
-        round them first. "highs" solves the program as a linear program
-        with HiGHS. "auto" uses LEMON when the program allows it, and
-        HiGHS otherwise. Defaults to "auto".
+        as on 2-D grids and planar meshes, with cycles that can be oriented
+        to traverse each shared edge in opposite directions, and
+        non-negative integer weights. The default weights are integers; to
+        use fractional weights, scale and round them first. "highs" solves
+        the program as a linear program with HiGHS. "auto" uses LEMON when
+        the program allows it, and HiGHS otherwise. Defaults to "auto".
     return_info : bool, optional
         Also return the solver report. Defaults to False.
 
@@ -363,14 +359,9 @@ def calculate_k(
     b_eq = -y
 
     if weights is None:
-        if adaptive_weighting:
-            nonzero_simplices = np.minimum(np.abs(b_eq), 1)
-            W = np.abs(A_eq)
-            num_nonzero_simplices = nonzero_simplices @ W
-            num_simplices = W.sum(0).A1
-            c = num_simplices - num_nonzero_simplices
-        else:
-            c = np.ones((M * 2,), dtype=np.int64)
+        # each edge costs the number of its cycles that have no residue
+        W = np.abs(A_eq)
+        c = W.sum(0).A1 - np.minimum(np.abs(b_eq), 1) @ W
     else:
         c = np.tile(weights, 2)
 

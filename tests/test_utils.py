@@ -83,52 +83,27 @@ def test_3d_short_axis_is_filtered():
     assert len(edges) == len(plain_edges)
 
 
-def test_prepare_weights_rescales_into_smoothing_range():
+def test_prepare_weights_uses_weights_as_given():
     weights = np.array([[0.0, 5.0], [10.0, 15.0]])
-    edges, _ = get_2d_edges_and_simplices((2, 2))
-    out = prepare_weights(weights, edges, smoothing=0.1, merging_method="mean")
-    assert out.shape == (4,)
-    assert out.min() >= 0.1
-    assert out.max() <= 1.0
+    edges = np.array([[0, 1], [0, 2], [1, 3], [2, 3]])
+    np.testing.assert_array_equal(prepare_weights(weights, edges), [5, 10, 20, 25])
+    np.testing.assert_array_equal(prepare_weights(weights, edges, "min"), [0, 0, 5, 10])
+    np.testing.assert_array_equal(prepare_weights(weights, edges, "max"), [5, 10, 15, 15])
+    np.testing.assert_array_equal(prepare_weights(weights, edges, "mean"), [2.5, 5, 10, 12.5])
 
 
-def test_prepare_weights_merging_methods_order():
-    weights = np.array([[0.0, 1.0], [2.0, 3.0]])
-    edges, _ = get_2d_edges_and_simplices((2, 2))
-    w_min = prepare_weights(weights, edges, smoothing=0.0, merging_method="min")
-    w_max = prepare_weights(weights, edges, smoothing=0.0, merging_method="max")
-    w_mean = prepare_weights(weights, edges, smoothing=0.0, merging_method="mean")
-    assert w_min.min() == pytest.approx(0.0)
-    assert w_max.max() == pytest.approx(1.0)
-    assert np.all(w_min <= w_mean) and np.all(w_mean <= w_max)
-
-
-def test_prepare_weights_nan_becomes_zero():
+@pytest.mark.parametrize("merging_method", ["sum", "min", "max", "mean"])
+def test_prepare_weights_nan_becomes_zero(merging_method):
     weights = np.array([[np.nan, 1.0], [2.0, 3.0]])
-    edges, _ = get_2d_edges_and_simplices((2, 2))
-    out = prepare_weights(weights, edges, smoothing=0.1, merging_method="min")
+    edges = np.array([[0, 1], [0, 2], [1, 3], [2, 3]])
+    out = prepare_weights(weights, edges, merging_method)
     assert not np.isnan(out).any()
-    assert 0.0 in out
-
-
-def test_prepare_weights_constant_input():
-    weights = np.ones((2, 2))
-    edges, _ = get_2d_edges_and_simplices((2, 2))
-    out = prepare_weights(weights, edges)
-    assert np.all(out == 1.0)
-
-
-def test_prepare_weights_rejects_bad_smoothing():
-    weights = np.ones((2, 2))
-    edges, _ = get_2d_edges_and_simplices((2, 2))
-    with pytest.raises(ValueError, match="smoothing"):
-        prepare_weights(weights, edges, smoothing=1.0)
-    with pytest.raises(ValueError, match="smoothing"):
-        prepare_weights(weights, edges, smoothing=-0.1)
+    np.testing.assert_array_equal(out[:2], 0)
+    assert np.all(out[2:] > 0)
 
 
 def test_prepare_weights_rejects_bad_merging_method():
     weights = np.ones((2, 2))
     edges, _ = get_2d_edges_and_simplices((2, 2))
-    with pytest.raises(ValueError, match="min, max, mean"):
+    with pytest.raises(ValueError, match="merging_method must be"):
         prepare_weights(weights, edges, merging_method="median")

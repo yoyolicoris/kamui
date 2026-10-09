@@ -86,16 +86,16 @@ The reference pixel keeps its wrapped value. It defaults to the first pixel; cho
 
 ### Weights
 
-Per-pixel quality weights, such as InSAR coherence, tell the solver where corrections are cheap. The weights are rescaled linearly to $`[0.1, 1]`$, and each edge gets the mean of its two pixels; `merging_method="min"` or `"max"` change that. Edges that touch a NaN weight get weight 0.
+Per-pixel quality weights, such as InSAR coherence, tell the solver where corrections are cheap. Each edge gets the sum of its two pixels' weights; `merging_method="min"`, `"max"` or `"mean"` change that. Edges that touch a NaN weight get weight 0. Kamui uses the weights as given: multiplying them all by one factor does not change the result.
 
-LEMON needs integer weights, and Kamui does not round them unless you ask. The rescaled weights are fractions, so by default `unwrap_dimensional` solves weighted programs with HiGHS. Pass `weight_scale` to multiply them by that factor and round them, so that LEMON solves the program. Scaling every weight leaves the optimum unchanged, and only the rounding does not, so a larger factor keeps more resolution: `weight_scale=1000` keeps three decimals.
+LEMON needs integer weights, and Kamui does not round them for you. Fractional weights are solved by HiGHS, which is several times slower. To use LEMON, scale and round the weights yourself; a larger factor keeps more resolution:
 
 ```python
 coherence = np.random.default_rng(0).uniform(0.2, 1.0, wrapped.shape)
-unwrapped = kamui.unwrap_dimensional(wrapped, weights=coherence, weight_scale=1000)
+unwrapped = kamui.unwrap_dimensional(wrapped, weights=np.round(coherence * 100))
 ```
 
-With `unwrap_arbitrary`, scale and round per-edge weights yourself, for example `np.round(1000 * edge_weights)`. With `solver="lemon"`, fractional weights raise an error instead of falling back to HiGHS.
+`unwrap_arbitrary` takes per-edge weights; `kamui.prepare_weights(weights, edges)` builds them from per-vertex weights. With `solver="lemon"`, fractional weights raise an error instead of falling back to HiGHS.
 
 ### Cyclical axes
 
@@ -151,7 +151,7 @@ Without `simplices`, `unwrap_arbitrary(psi, edges)` uses the edgelist formulatio
 
 | Solver | How to select it | Needs | Notes |
 | --- | --- | --- | --- |
-| Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `adaptive_weighting=False` makes every edge cost 1, and `weights` overrides both. 2-D grids and planar meshes with integer weights, the defaults included, are solved by LEMON, and everything else by HiGHS. `solver="highs"` forces HiGHS, and `solver="lemon"` raises an error instead of falling back. |
+| Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `weights` overrides that. 2-D grids and planar meshes with integer weights, the defaults included, are solved by LEMON, and everything else by HiGHS. `solver="highs"` forces HiGHS, and `solver="lemon"` raises an error instead of falling back. |
 | Edgelist ILP | `use_edgelist=True`, or `unwrap_arbitrary(psi, edges)` | edges only | Uniform weights unless `weights` is given. Integer weights, the default included, are solved by LEMON, and fractional ones by HiGHS; `solver` works as for the simplex ILP. |
 | PUMA | `method="gc"` | edges and `pip install kamui[extra]` | Minimizes a $`p`$-norm energy (options `p` and `max_jump`) and takes no weights. Currently slower than the ILP solvers on grids ([#26](https://github.com/yoyolicoris/kamui/issues/26)). GPL; see [Installation](#installation). |
 
@@ -187,14 +187,14 @@ print(info.success, info.fun, info.ilp_fallback)
 - `solver` names the solver that ran: `"lemon"` or `"highs"`.
 - `ilp_fallback` tells whether the LP optimum was fractional, so HiGHS solved the integer program instead.
 
-With `adaptive_weighting=False`, the simplex and edgelist solvers minimize the same cost, so their `fun` values can be compared directly:
+With the same weights, the simplex and edgelist solvers minimize the same cost, so their `fun` values can be compared directly:
 
 ```python
 noisy = kamui.wrap_difference(true_phase + np.random.default_rng(1).normal(0, 1.0, wrapped.shape))
 edges, cycles = kamui.get_2d_edges_and_simplices(noisy.shape)
 
 _, simplex = kamui.unwrap_arbitrary(
-    noisy.ravel(), edges, cycles, adaptive_weighting=False, return_info=True
+    noisy.ravel(), edges, cycles, weights=np.ones(len(edges)), return_info=True
 )
 _, edgelist = kamui.unwrap_arbitrary(noisy.ravel(), edges, return_info=True)
 assert np.isclose(simplex.fun, edgelist.fun)
@@ -215,7 +215,7 @@ Kamui expects a single connected graph with finite phase values. NaNs, or region
 | 1000×1000 | 57 s, 2.6 GB | 5.0 s, 2.2 GB |
 | 2000×2000 | — | 32 s |
 
-The edgelist path (`use_edgelist=True`) and weighted grids with `weight_scale=1000` gain about 4× from LEMON: at 600×600, from 78 s to 18 s and from 16 s to 4.4 s.
+The edgelist path (`use_edgelist=True`) and grids with integer weights gain 3–4× from LEMON: at 600×600, from 78 s to 18 s and from 14 s to 4.3 s.
 
 Both solvers reach the same optimal cost. With LEMON, the solve is no longer the bottleneck: on large grids, most of the time and memory go into Kamui's own Python code that builds the program, which [#24](https://github.com/yoyolicoris/kamui/issues/24) addresses. Scenes such as the 4628×2562 interferograms in [#11](https://github.com/yoyolicoris/kamui/issues/11) and [#12](https://github.com/yoyolicoris/kamui/issues/12) still need tens of GB of memory.
 

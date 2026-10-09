@@ -216,65 +216,43 @@ def get_3d_edges_and_simplices(
 def prepare_weights(
     weights: npt.NDArray,
     edges: npt.NDArray[np.int_],
-    smoothing: float = 0.1,
-    merging_method: str = "mean",
+    merging_method: str = "sum",
 ) -> npt.NDArray[np.floating]:
     """Prepare per-edge weights from per-vertex weights.
 
-    Assume the weights share the shape of the phase array to be unwrapped.
-    Scale the weights from 0 to 1, pick the weights of the phase pairs
-    connected by the edges, and merge each pair into one edge weight with
-    ``merging_method``.
+    Each edge combines the weights of its two vertices with
+    ``merging_method``. The weights are used as given: scaling them all by
+    one factor leaves the unwrapping unchanged, but shifting them does not,
+    so kamui does not rescale them.
 
     Parameters
     ----------
     weights : np.ndarray
-        Per-vertex weights, shaped like the phase array.
+        Non-negative per-vertex weights, shaped like the phase array; NaN
+        marks vertices without a weight.
     edges : (M, 2) np.ndarray
         Edges connecting the phases.
-    smoothing : float, optional
-        Minimal rescaled value where weights are defined, in [0, 1).
-        When positive, 0 is reserved for originally NaN weights; when 0,
-        NaN weights and the smallest non-NaN ones both map to 0.
-        Defaults to 0.1.
     merging_method : str, optional
-        How to combine two phase weights into a single edge weight;
-        one of "min", "max", "mean". Defaults to "mean".
+        How to combine the two vertex weights into one edge weight; one of
+        "sum", "min", "max", "mean". "sum" and "mean" give the same
+        unwrapping, but only "sum", "min" and "max" keep integer weights
+        integer, which LEMON needs. Defaults to "sum".
 
     Returns
     -------
     (M,) np.ndarray
-        Per-edge weights rescaled to [0, 1], with NaN entries replaced by 0.
+        Per-edge weights; edges that touch a NaN weight get 0.
+
+    Raises
+    ------
+    ValueError
+        If ``merging_method`` is not one of the above.
     """
-    if not 0 <= smoothing < 1:
+    merge = {"sum": np.sum, "min": np.min, "max": np.max, "mean": np.mean}.get(merging_method)
+    if merge is None:
         raise ValueError(
-            "`smoothing` should be a value between 0 (inclusive) and 1 (non inclusive); got "
-            + str(smoothing)
+            f"merging_method must be 'sum', 'min', 'max' or 'mean'; got {merging_method!r}"
         )
-    # scale the weights from 0 to 1
-    weights = weights - np.nanmin(weights)
-    current_max = np.nanmax(weights)
-    if not current_max:
-        # current maximum is 0, which means all weights originally had the same value,
-        # now 0; replace everything with 1
-        weights += 1
-    else:
-        weights /= current_max
-        weights *= 1 - smoothing
-        weights += smoothing
-    # pick the weights corresponding to the phases connected by the edges
-    # and use `merging_method` to get one weight for each edge
-    allowed_merging_methods = ["min", "max", "mean"]
-    if merging_method not in allowed_merging_methods:
-        raise ValueError(
-            "`merging_method` should be one of: "
-            + ", ".join(allowed_merging_methods)
-            + "; got "
-            + str(merging_method)
-        )
-    weights_for_edges = getattr(np, merging_method)(weights.ravel()[edges], axis=1)
-
-    # make sure there are no NaNs in the weights; replace any with 0s
-    weights_for_edges[np.isnan(weights_for_edges)] = 0
-
-    return weights_for_edges
+    edge_weights = merge(np.asarray(weights, dtype=np.float64).ravel()[edges], axis=1)
+    edge_weights[np.isnan(edge_weights)] = 0
+    return edge_weights

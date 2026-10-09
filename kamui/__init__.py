@@ -72,10 +72,9 @@ def unwrap_dimensional(
     start_pixel: tuple[int, int] | tuple[int, int, int] | None = None,
     use_edgelist: bool = False,
     cyclical_axis: int | tuple[int, ...] = (),
-    merging_method: str = "mean",
+    merging_method: str = "sum",
     weights: np.ndarray | None = None,
     *,
-    weight_scale: float | None = None,
     return_info: bool = False,
     **kwargs: Any,
 ) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
@@ -93,21 +92,16 @@ def unwrap_dimensional(
     cyclical_axis : int or tuple of int, optional
         The axis (or axes) treated as cyclical. Defaults to ().
     merging_method : str, optional
-        Way of combining two phase weights into a single edge weight.
-        Defaults to "mean".
+        How to combine the weights of an edge's two pixels: "sum", "min",
+        "max" or "mean"; see :func:`kamui.prepare_weights`. Defaults to
+        "sum".
     weights : np.ndarray, optional
-        Weights defining the 'goodness' of value at each vertex.
-        Shape must match the shape of x. Only the ILP solvers
-        (``method="ilp"``) use weights. They are rescaled to fractions in
-        [0.1, 1] per edge, which LEMON cannot take; see ``weight_scale``.
-        Defaults to None.
-    weight_scale : float, optional
-        Multiply the rescaled edge weights by this factor and round them to
-        integers, so that LEMON can solve weighted programs. Scaling every
-        weight leaves the optimum unchanged; only the rounding does not, so
-        larger factors keep more resolution: 1000 keeps three decimals.
-        Without it, weighted programs go to HiGHS, and ``solver="lemon"``
-        raises. Defaults to None.
+        Non-negative per-pixel weights defining the 'goodness' of each
+        value, shaped like x; NaN marks pixels without a weight. They are
+        used as given, without rescaling. Only the ILP solvers
+        (``method="ilp"``) use weights. Integer weights, such as
+        ``np.round(coherence * 100)``, let LEMON solve the program;
+        fractional ones go to HiGHS. Defaults to None.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -142,15 +136,10 @@ def unwrap_dimensional(
         raise ValueError("x must be 2D or 3D")
     psi = x.ravel()
 
-    if weight_scale is not None and not weight_scale > 0:
-        raise ValueError(f"weight_scale must be positive; got {weight_scale}")
     if weights is not None:
         # convert per-vertex weights to per-edge weights; forward them only
         # when given, since puma (method="gc") takes no weights argument
-        weights = prepare_weights(weights, edges=edges, merging_method=merging_method)
-        if weight_scale is not None:
-            weights = np.round(weights * weight_scale)
-        kwargs["weights"] = weights
+        kwargs["weights"] = prepare_weights(weights, edges=edges, merging_method=merging_method)
     out = unwrap_arbitrary(
         psi,
         edges,
