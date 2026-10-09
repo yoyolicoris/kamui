@@ -71,13 +71,15 @@ def get_2d_edges_and_simplices(
         axis=1,
     ).tolist()
     if len(cyclical_axis) > 0:
-        pairs = [
-            (
-                np.squeeze(np.take(nodes, [0], axis=ax), axis=ax),
-                np.squeeze(np.take(nodes, [-1], axis=ax), axis=ax),
-            )
-            for ax in cyclical_axis
-        ]
+        pairs = []
+        for ax in cyclical_axis:
+            first = np.squeeze(np.take(nodes, [0], axis=ax), axis=ax)
+            last = np.squeeze(np.take(nodes, [-1], axis=ax), axis=ax)
+            # Orient the wrap-around cells like the interior ones, which step
+            # down axis 0 first: across axis 0 that means starting from the
+            # last row, so every edge two cells share is traversed in opposite
+            # directions and LEMON needs no cycle reversals.
+            pairs.append((last, first) if ax == 0 else (first, last))
         simplices += np.concatenate(
             tuple(
                 np.stack(
@@ -209,6 +211,29 @@ def get_3d_edges_and_simplices(
             axis=0,
         ).tolist()
     return edges, simplices
+
+
+def _merge_weights(
+    weights: npt.NDArray, edges: npt.NDArray[np.int_], merging_method: str
+) -> npt.NDArray:
+    """Combine each edge's two vertex weights by "sum", "min" or "max", without rescaling.
+
+    Edges that touch a NaN weight get 0. Integer weights stay integer, as
+    LEMON needs.
+    """
+    merge = {"sum": np.sum, "min": np.min, "max": np.max}.get(merging_method)
+    if merge is None:
+        raise ValueError(f"merging_method must be 'sum', 'min' or 'max'; got {merging_method!r}")
+    weights = np.asarray(weights)
+    if np.issubdtype(weights.dtype, np.integer) and (
+        np.max(weights, initial=0) >= 2**62 or np.min(weights, initial=0) < -(2**62)
+    ):
+        # a sum of two such 64-bit integers can wrap; floats cannot, and LEMON
+        # rejects weights this large anyway
+        weights = weights.astype(np.float64)
+    edge_weights = merge(weights.ravel()[edges], axis=1)
+    edge_weights[np.isnan(edge_weights)] = 0
+    return edge_weights
 
 
 def prepare_weights(

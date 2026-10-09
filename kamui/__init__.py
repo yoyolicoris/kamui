@@ -24,6 +24,7 @@ from scipy.optimize import OptimizeResult
 
 from .core import calculate_k, calculate_m, integrate, puma
 from .utils import (
+    _merge_weights,
     get_2d_edges_and_simplices,
     get_3d_edges_and_simplices,
     prepare_weights,
@@ -72,7 +73,7 @@ def unwrap_dimensional(
     start_pixel: tuple[int, int] | tuple[int, int, int] | None = None,
     use_edgelist: bool = False,
     cyclical_axis: int | tuple[int, ...] = (),
-    merging_method: str = "mean",
+    merging_method: str = "sum",
     weights: np.ndarray | None = None,
     *,
     return_info: bool = False,
@@ -92,12 +93,17 @@ def unwrap_dimensional(
     cyclical_axis : int or tuple of int, optional
         The axis (or axes) treated as cyclical. Defaults to ().
     merging_method : str, optional
-        Way of combining two phase weights into a single edge weight.
-        Defaults to "mean".
+        How to combine the weights of an edge's two pixels: "sum", "min" or
+        "max". Defaults to "sum".
     weights : np.ndarray, optional
-        Weights defining the 'goodness' of value at each vertex.
-        Shape must match the shape of x. Only the ILP solvers
-        (``method="ilp"``) use weights. Defaults to None.
+        Non-negative per-pixel weights defining the 'goodness' of each
+        value, shaped like x; NaN marks pixels without a weight, and edges
+        that touch one get weight 0. They are used as given, without
+        rescaling. Only the ILP solvers (``method="ilp"``) use weights.
+        Integer weights, such as ``np.round(coherence * 100)``, let LEMON
+        solve the program; fractional ones go to HiGHS. For the rescaled
+        weights of :func:`kamui.prepare_weights`, pass its result to
+        :func:`kamui.unwrap_arbitrary` instead. Defaults to None.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -135,7 +141,7 @@ def unwrap_dimensional(
     if weights is not None:
         # convert per-vertex weights to per-edge weights; forward them only
         # when given, since puma (method="gc") takes no weights argument
-        kwargs["weights"] = prepare_weights(weights, edges=edges, merging_method=merging_method)
+        kwargs["weights"] = _merge_weights(weights, edges, merging_method)
     out = unwrap_arbitrary(
         psi,
         edges,
@@ -197,9 +203,11 @@ def unwrap_arbitrary(
         Only returned if ``return_info`` is True. For ``method="ilp"`` it
         is the report of :func:`kamui.core.calculate_k` (with simplices) or
         :func:`kamui.core.calculate_m` (without): ``fun`` is the weighted
-        L1 cost, ``success``, ``status`` and ``message`` come from HiGHS,
-        and ``ilp_fallback`` tells whether the integer program had to be
-        solved. For ``method="gc"`` it is the report of
+        L1 cost, ``success``, ``status`` and ``message`` come from the
+        solver, which ``solver`` names ("lemon" or "highs"; pass
+        ``solver=`` through ``**kwargs`` to choose it), and
+        ``ilp_fallback`` tells whether HiGHS had to solve the integer
+        program. For ``method="gc"`` it is the report of
         :func:`kamui.core.puma`, with the final energy as ``fun``.
     """
     if method == "gc":

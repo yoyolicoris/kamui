@@ -35,7 +35,10 @@ Kamui then integrates $`x + 2\pi k`$ along a spanning tree from the reference ve
 This is the general form of the network programming approach proposed in the paper "[A novel phase unwrapping method based on network programming](https://ieeexplore.ieee.org/document/673674)".
 With `period=T`, replace $`2\pi`$ by $`T`$ throughout.
 
-Kamui solves the linear programming (LP) relaxation, with $`k \in \mathbb{R}^{M}`$, first.
+On 2-D grids and planar meshes, every edge lies on at most two cycles. Kamui orients the cycles so that they traverse each shared edge in opposite directions, reversing any that do not; reversing a cycle negates both sides of its constraint, so the program does not change. $`A`$ is then the incidence matrix of the dual graph, which has one node per cycle and one more for the outside, and the program is a min-cost flow: the residues are the supplies and $`k_e`$ is the flow across edge $`e`$.
+Kamui solves these programs with the network simplex of the [LEMON](https://lemon.cs.elte.hu/) graph library, which is many times faster than a general LP solver. LEMON needs integer weights; see [Weights](#weights).
+
+Otherwise, as on 3-D grids or with fractional weights, Kamui first solves the linear programming (LP) relaxation, with $`k \in \mathbb{R}^{M}`$, using HiGHS.
 For 2-D grids and planar meshes, $`A`$ is totally unimodular, so the LP optimum is already integral. The same is true of 3-D grids without a cyclical axis. Other inputs fall back to the integer program.
 Large inputs are still computationally heavy; see [Performance and memory](#performance-and-memory).
 
@@ -44,6 +47,8 @@ Large inputs are still computationally heavy; see [Performance and memory](#perf
 ```commandline
 pip install kamui
 ```
+
+This also installs [pylmcf](https://github.com/michalsta/pylmcf), Python bindings for LEMON's network simplex under the Boost Software License, which Kamui uses wherever it applies.
 
 Kamui also provides [PUMA](https://ieeexplore.ieee.org/document/4099386), a fast and robust phase unwrapping algorithm based on graph cuts as an alternative.
 To install PUMA, run
@@ -81,11 +86,24 @@ The reference pixel keeps its wrapped value. It defaults to the first pixel; cho
 
 ### Weights
 
-Per-pixel quality weights, such as InSAR coherence, tell the solver where corrections are cheap. The weights are rescaled linearly to $`[0.1, 1]`$, and each edge gets the mean of its two pixels; `merging_method="min"` or `"max"` change that. Edges that touch a NaN weight get weight 0.
+Per-pixel quality weights, such as InSAR coherence, tell the solver where corrections are cheap. Each edge gets the sum of its two pixels' weights; `merging_method="min"` or `"max"` change that. Edges that touch a NaN weight get weight 0. Kamui uses the weights as given: multiplying them all by one factor does not change the result.
+
+LEMON needs integer weights, and Kamui does not round them for you. Fractional weights are solved by HiGHS, which is several times slower. To use LEMON, scale and round the weights yourself; a larger factor keeps more resolution:
 
 ```python
 coherence = np.random.default_rng(0).uniform(0.2, 1.0, wrapped.shape)
-unwrapped = kamui.unwrap_dimensional(wrapped, weights=coherence)
+unwrapped = kamui.unwrap_dimensional(wrapped, weights=np.round(coherence * 100))
+```
+
+With `solver="lemon"`, fractional weights raise an error instead of falling back to HiGHS.
+
+`unwrap_arbitrary` takes per-edge weights and uses them exactly as given. Up to version 0.2, `unwrap_dimensional` rescaled the per-pixel weights linearly to $`[0.1, 1]`$ before merging them. `kamui.prepare_weights` still does that, so pass its result to `unwrap_arbitrary` to keep that behaviour:
+
+```python
+edges, cycles = kamui.get_2d_edges_and_simplices(wrapped.shape)
+edge_weights = kamui.prepare_weights(coherence, edges)  # rescaled, then averaged per edge
+unwrapped = kamui.unwrap_arbitrary(wrapped.ravel(), edges, cycles, weights=edge_weights)
+unwrapped = unwrapped.reshape(wrapped.shape)
 ```
 
 ### Cyclical axes
@@ -142,8 +160,8 @@ Without `simplices`, `unwrap_arbitrary(psi, edges)` uses the edgelist formulatio
 
 | Solver | How to select it | Needs | Notes |
 | --- | --- | --- | --- |
-| Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `adaptive_weighting=False` makes every edge cost 1, and `weights` overrides both. |
-| Edgelist ILP | `use_edgelist=True`, or `unwrap_arbitrary(psi, edges)` | edges only | Uniform weights unless `weights` is given. |
+| Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `weights` overrides that. 2-D grids and planar meshes with integer weights, the defaults included, are solved by LEMON, and everything else by HiGHS. `solver="highs"` forces HiGHS, and `solver="lemon"` raises an error instead of falling back. |
+| Edgelist ILP | `use_edgelist=True`, or `unwrap_arbitrary(psi, edges)` | edges only | Uniform weights unless `weights` is given. Integer weights, the default included, are solved by LEMON, and fractional ones by HiGHS; `solver` works as for the simplex ILP. |
 | PUMA | `method="gc"` | edges and `pip install kamui[extra]` | Minimizes a $`p`$-norm energy (options `p` and `max_jump`) and takes no weights. Currently slower than the ILP solvers on grids ([#26](https://github.com/yoyolicoris/kamui/issues/26)). GPL; see [Installation](#installation). |
 
 The edgelist ILP needs no cycles, because it optimizes vertex offsets $`m \in \mathbb{Z}^{\lvert V \rvert}`$ directly, with $`\phi = \psi + 2\pi m`$:
@@ -153,6 +171,8 @@ The edgelist ILP needs no cycles, because it optimizes vertex offsets $`m \in \m
 ```
 
 The term inside the absolute value is the edge ambiguity $`k_e`$. This is therefore the cost of the simplex ILP, optimized over offsets instead of ambiguities. The two optima agree whenever the cycles cover every loop of the graph, as grid cells and mesh triangles do.
+
+Its LP dual is a min-cost circulation on the graph itself, with a flow $`y_e \in [-w_e, w_e]`$ along each edge that maximizes $`\sum_e y_e \, \text{round}\left( (\psi_v - \psi_u) / 2\pi \right)`$. LEMON solves that circulation, and its node potentials are an optimal $`m`$.
 
 PUMA instead uses graph cuts to minimize the $`p`$-norm of the unwrapped differences:
 
@@ -171,17 +191,18 @@ print(info.success, info.fun, info.ilp_fallback)
 ```
 
 - `fun` is the weighted L1 cost of the corrections; for PUMA, it is the final energy.
-- `success`, `status` and `message` come from HiGHS.
-- `ilp_fallback` tells whether the LP optimum was fractional, so the integer program was solved instead.
+- `success`, `status` and `message` come from the solver.
+- `solver` names the solver that ran: `"lemon"` or `"highs"`.
+- `ilp_fallback` tells whether the LP optimum was fractional, so HiGHS solved the integer program instead.
 
-With `adaptive_weighting=False`, the simplex and edgelist solvers minimize the same cost, so their `fun` values can be compared directly:
+With the same weights, the simplex and edgelist solvers minimize the same cost, so their `fun` values can be compared directly:
 
 ```python
 noisy = kamui.wrap_difference(true_phase + np.random.default_rng(1).normal(0, 1.0, wrapped.shape))
 edges, cycles = kamui.get_2d_edges_and_simplices(noisy.shape)
 
 _, simplex = kamui.unwrap_arbitrary(
-    noisy.ravel(), edges, cycles, adaptive_weighting=False, return_info=True
+    noisy.ravel(), edges, cycles, weights=np.ones(len(edges)), return_info=True
 )
 _, edgelist = kamui.unwrap_arbitrary(noisy.ravel(), edges, return_info=True)
 assert np.isclose(simplex.fun, edgelist.fun)
@@ -193,15 +214,18 @@ Kamui expects a single connected graph with finite phase values. NaNs, or region
 
 ## Performance and memory
 
-Measured with the default solver on noisy 2-D grids, on an Apple M1 Pro with SciPy 1.18 (HiGHS 1.12):
+`unwrap_dimensional` with default settings on noisy 2-D grids, measured on an Apple M1 Pro with SciPy 1.18 (HiGHS 1.12) and pylmcf 1.3.0:
 
-| Grid | Time | Peak memory |
+| Grid | HiGHS | LEMON |
 | --- | --- | --- |
-| 300×300 | 1.7 s | 0.7 GB |
-| 600×600 | 11 s | 1.5 GB |
+| 300×300 | 1.6 s, 0.7 GB | 0.32 s, 0.2 GB |
+| 600×600 | 9.7 s, 1.6 GB | 1.6 s, 0.8 GB |
+| 1000×1000 | 55 s, 2.3 GB | 4.8 s, 2.1 GB |
+| 2000×2000 | — | 26 s, 2.6 GB |
 
-Memory grows roughly linearly with the number of pixels, at about 4 KB per pixel, so a 4628×2562 interferogram needs about 45 GB ([#11](https://github.com/yoyolicoris/kamui/issues/11), [#12](https://github.com/yoyolicoris/kamui/issues/12)).
-[#24](https://github.com/yoyolicoris/kamui/issues/24) cuts the Python overhead, and [#25](https://github.com/yoyolicoris/kamui/issues/25) evaluates a dedicated min-cost-flow solver for 2-D data.
+The edgelist path (`use_edgelist=True`) and grids with integer weights gain 3–4× from LEMON: at 600×600, from 78 s to 18 s and from 14 s to 4.3 s.
+
+Both solvers reach the same optimal cost. With LEMON, the solve is no longer the bottleneck: on large grids, most of the time and memory go into Kamui's own Python code that builds the program, which [#24](https://github.com/yoyolicoris/kamui/issues/24) addresses. Scenes such as the 4628×2562 interferograms in [#11](https://github.com/yoyolicoris/kamui/issues/11) and [#12](https://github.com/yoyolicoris/kamui/issues/12) still need tens of GB of memory.
 
 If unwrapping is unexpectedly slow, check your SciPy build. On macOS (Apple Silicon), conda-forge's SciPy 1.15.0–1.15.2 builds solve kamui's programs hundreds of times slower than SciPy's PyPI wheels and other conda-forge releases, for example 5 s instead of 10 ms for a 32×32 grid.
 
@@ -213,7 +237,7 @@ If unwrapping is unexpectedly slow, check your SciPy build. On macOS (Apple Sili
 
 - [ ] Missing data and disconnected graphs ([#23](https://github.com/yoyolicoris/kamui/issues/23))
 - [ ] Lower memory use on large scenes ([#24](https://github.com/yoyolicoris/kamui/issues/24))
-- [ ] A min-cost-flow solver for 2-D and planar data ([#25](https://github.com/yoyolicoris/kamui/issues/25))
+- [x] A min-cost-flow solver for 2-D and planar data ([#25](https://github.com/yoyolicoris/kamui/issues/25))
 - [ ] Faster PUMA ([#26](https://github.com/yoyolicoris/kamui/issues/26))
 - [ ] A conda-forge package ([#13](https://github.com/yoyolicoris/kamui/issues/13))
 
