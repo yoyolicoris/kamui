@@ -258,7 +258,10 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
     tails, heads, lengths = _cycle_steps(simplices)
     n = max(int(np.max(edges, initial=-1)), int(np.max(heads, initial=-1))) + 1
     codes = edges[:, 0].astype(np.int64) * n + edges[:, 1]
-    order = np.argsort(codes)
+    # Timsort merges presorted runs, such as a grid's horizontal and vertical
+    # edges, in near-linear time, but is slower than quicksort on shuffled codes.
+    presorted = np.count_nonzero(np.diff(codes) < 0) < 64
+    order = np.argsort(codes, kind="stable" if presorted else "quicksort")
     if np.any(np.diff(codes[order]) == 0):
         raise ValueError("edges must be unique")
     # a sentinel above every code, so that misses need no bounds check

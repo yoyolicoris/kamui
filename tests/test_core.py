@@ -186,6 +186,15 @@ def test_cycle_matrix_matches_the_reference_loop(case):
         np.testing.assert_array_equal(core._cycle_matrix(edges, array).toarray(), expected)
 
 
+def test_cycle_matrix_handles_shuffled_edges():
+    # enough out-of-order edges to take the quicksort path
+    edges, simplices = get_2d_edges_and_simplices((10, 10))
+    edges = edges[np.random.default_rng(12).permutation(len(edges))]
+    assert np.count_nonzero(np.diff(edges[:, 0] * 100 + edges[:, 1]) < 0) >= 64
+    expected = _reference_cycle_matrix(edges, simplices.tolist()).toarray()
+    np.testing.assert_array_equal(core._cycle_matrix(edges, simplices).toarray(), expected)
+
+
 def test_cycle_matrix_gives_an_empty_cycle_an_empty_row():
     edges, simplices = _triangle()
     V = core._cycle_matrix(edges, [[], *simplices])
