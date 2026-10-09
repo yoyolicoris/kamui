@@ -214,14 +214,14 @@ Kamui expects a single connected graph with finite phase values. NaNs, or region
 
 ## Performance and memory
 
-`unwrap_dimensional` with default settings on noisy 2-D grids, measured on an Apple M1 Pro with SciPy 1.18 (HiGHS 1.12) and pylmcf 1.2.1:
+`unwrap_dimensional` with default settings on noisy 2-D grids, measured on an Apple M1 Pro with SciPy 1.18 (HiGHS 1.12) and pylmcf 1.3.0:
 
 | Grid | HiGHS | LEMON |
 | --- | --- | --- |
-| 300×300 | 1.6 s, 0.7 GB | 0.35 s, 0.3 GB |
-| 600×600 | 9.8 s, 1.7 GB | 1.6 s, 0.8 GB |
-| 1000×1000 | 57 s, 2.6 GB | 5.0 s, 2.2 GB |
-| 2000×2000 | — | 32 s |
+| 300×300 | 1.6 s, 0.7 GB | 0.32 s, 0.2 GB |
+| 600×600 | 9.7 s, 1.6 GB | 1.6 s, 0.8 GB |
+| 1000×1000 | 55 s, 2.3 GB | 4.8 s, 2.1 GB |
+| 2000×2000 | — | 26 s, 2.6 GB |
 
 The edgelist path (`use_edgelist=True`) and grids with integer weights gain 3–4× from LEMON: at 600×600, from 78 s to 18 s and from 14 s to 4.3 s.
 
