@@ -436,6 +436,17 @@ def test_calculate_m_rejects_unknown_solver():
         calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), solver="cplex")
 
 
+@pytest.mark.parametrize("solver", ["auto", "highs"])
+@pytest.mark.parametrize("extra", [-1, 1])
+def test_weights_need_one_entry_per_edge(solver, extra):
+    edges, simplices = _triangle()
+    weights = np.ones(3 + extra)
+    with pytest.raises(ValueError, match="one entry per edge"):
+        calculate_k(edges, simplices, np.array([0.4, 0.4, 0.3]), weights, solver=solver)
+    with pytest.raises(ValueError, match="one entry per edge"):
+        calculate_m(edges, np.array([1, 0, 0]), weights, solver=solver)
+
+
 def test_lemon_keeps_large_integer_weights_exact():
     # 2**53 + 1 rounds to 2**53 in float64, which would tie the two cheapest
     # edges; the cheapest edge is 1 only if the weights stay exact

@@ -57,6 +57,14 @@ def _check_solver(solver: str) -> None:
         raise ValueError(f"solver must be 'auto', 'highs' or 'lemon'; got {solver!r}")
 
 
+def _edge_weights(weights: np.ndarray, M: int) -> np.ndarray:
+    """Return weights as an array, raising ValueError unless it has one entry per edge."""
+    w = np.asarray(weights)
+    if w.shape != (M,):
+        raise ValueError(f"weights must have one entry per edge, shape ({M},); got {w.shape}")
+    return w
+
+
 def _lemon_rejects(w: np.ndarray) -> str | None:
     """Return what LEMON needs that the weights w lack, or None if it can take them exactly.
 
@@ -327,7 +335,8 @@ def calculate_k(
     ------
     ValueError
         If the edges are not unique, the simplices use an edge not in
-        ``edges``, ``solver`` is unknown, or ``solver="lemon"`` and the
+        ``edges``, ``weights`` does not have one entry per edge, ``solver``
+        is unknown, or ``solver="lemon"`` and the
         weights are not non-negative integers that sum to less than 2**61,
         or the cycles do not form a min-cost flow.
     """
@@ -367,7 +376,7 @@ def calculate_k(
         W = np.abs(V)
         w = W.sum(0).A1 - np.minimum(np.abs(b_eq), 1) @ W
     else:
-        w = np.asarray(weights)
+        w = _edge_weights(weights, M)
 
     arcs = None
     if solver != "highs":
@@ -459,18 +468,16 @@ def calculate_m(
     TypeError
         If ``differences`` does not have an integer dtype.
     ValueError
-        If ``solver`` is unknown, or ``solver="lemon"`` and the weights are
-        not non-negative integers that sum to less than 2**61.
+        If ``weights`` does not have one entry per edge, ``solver`` is
+        unknown, or ``solver="lemon"`` and the weights are not non-negative
+        integers that sum to less than 2**61.
     """
     _check_solver(solver)
     if not np.issubdtype(differences.dtype, np.integer):
         raise TypeError(f"differences must have an integer dtype; got {differences.dtype}")
     M = edges.shape[0]
     N = np.max(edges) + 1
-    if weights is None:
-        weights = np.ones((M,), dtype=np.int64)
-
-    w = np.asarray(weights)
+    w = np.ones((M,), dtype=np.int64) if weights is None else _edge_weights(weights, M)
     if solver != "highs":
         missing = _lemon_rejects(w)
         if solver == "lemon" and missing:
@@ -503,7 +510,7 @@ def calculate_m(
         ),
         shape=(M, N + 2 * M),
     )
-    c = np.concatenate((np.zeros(N, dtype=np.int64), weights, weights))
+    c = np.concatenate((np.zeros(N, dtype=np.int64), w, w))
 
     x, info = _solve_integer_program(c, A_eq, b_eq=differences)
     m = None if x is None else x[:N].astype(np.int64)
