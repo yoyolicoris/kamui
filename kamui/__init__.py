@@ -75,6 +75,7 @@ def unwrap_dimensional(
     merging_method: str = "mean",
     weights: np.ndarray | None = None,
     *,
+    weight_scale: float | None = None,
     return_info: bool = False,
     **kwargs: Any,
 ) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
@@ -97,7 +98,16 @@ def unwrap_dimensional(
     weights : np.ndarray, optional
         Weights defining the 'goodness' of value at each vertex.
         Shape must match the shape of x. Only the ILP solvers
-        (``method="ilp"``) use weights. Defaults to None.
+        (``method="ilp"``) use weights. They are rescaled to fractions in
+        [0.1, 1] per edge, which LEMON cannot take; see ``weight_scale``.
+        Defaults to None.
+    weight_scale : float, optional
+        Multiply the rescaled edge weights by this factor and round them to
+        integers, so that LEMON can solve weighted programs. Scaling every
+        weight leaves the optimum unchanged; only the rounding does not, so
+        larger factors keep more resolution: 1000 keeps three decimals.
+        Without it, weighted programs go to HiGHS, and ``solver="lemon"``
+        raises. Defaults to None.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -132,10 +142,15 @@ def unwrap_dimensional(
         raise ValueError("x must be 2D or 3D")
     psi = x.ravel()
 
+    if weight_scale is not None and not weight_scale > 0:
+        raise ValueError(f"weight_scale must be positive; got {weight_scale}")
     if weights is not None:
         # convert per-vertex weights to per-edge weights; forward them only
         # when given, since puma (method="gc") takes no weights argument
-        kwargs["weights"] = prepare_weights(weights, edges=edges, merging_method=merging_method)
+        weights = prepare_weights(weights, edges=edges, merging_method=merging_method)
+        if weight_scale is not None:
+            weights = np.round(weights * weight_scale)
+        kwargs["weights"] = weights
     out = unwrap_arbitrary(
         psi,
         edges,

@@ -51,7 +51,57 @@ def _solve_integer_program(
     return (np.round(res.x) if res.success else None), info
 
 
-def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray] | None:
+def _check_solver(solver: str) -> None:
+    """Raise ValueError unless solver names a backend."""
+    if solver not in ("auto", "highs", "lemon"):
+        raise ValueError(f"solver must be 'auto', 'highs' or 'lemon'; got {solver!r}")
+
+
+def _lemon_takes(w: np.ndarray, solver: str) -> bool:
+    """Return whether LEMON can take the weights w; with solver="lemon", raise if not."""
+    integer = np.array_equal(w, np.round(w))  # also False for NaN
+    non_negative = np.min(w, initial=0) >= 0
+    if solver == "lemon" and not integer:
+        raise ValueError(
+            "solver='lemon' needs integer weights; scale and round them first, "
+            "e.g. np.round(weights * 1000)"
+        )
+    if solver == "lemon" and not non_negative:
+        raise ValueError("solver='lemon' needs non-negative weights")
+    return solver != "highs" and integer and non_negative
+
+
+def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np.ndarray | None:
+    """Return which of N cycles to reverse so that shared edges are traversed both ways.
+
+    Cycles ``a[i]`` and ``b[i]`` share an edge, which they traverse in the
+    same direction where ``same[i]``. Exactly one of them must be reversed
+    there, and neither or both elsewhere. Reversals are fixed along a
+    spanning forest of the cycles, which `integrate` sums modulo 2 from a
+    virtual root joined to one cycle per component. Returns None if no
+    reversal works, as on a Möbius strip.
+    """
+    if a.size == 0:
+        return np.zeros(N, dtype=bool)
+    pairs = np.column_stack((np.minimum(a, b), np.maximum(a, b)))
+    pairs, first = np.unique(pairs, axis=0, return_index=True)
+    parity = same[first].astype(np.int64)
+    adjacency = sp.csr_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(N, N))
+    _, label = csg.connected_components(adjacency, directed=False)
+    _, roots = np.unique(label, return_index=True)
+    links = np.column_stack((np.full_like(roots, N), roots))
+    flips = integrate(
+        np.concatenate((pairs, pairs[:, ::-1], links)),
+        np.concatenate((parity, parity, np.zeros(roots.size, dtype=np.int64))),
+        start_i=N,
+    )
+    reverse = flips[:N] % 2 == 1
+    if np.any((reverse[a] != reverse[b]) != same):
+        return None
+    return reverse
+
+
+def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """Return the dual-graph arc of each edge, or None if V is not a network matrix.
 
     Each cycle becomes a node, and node ``N`` stands for the outside of all
@@ -60,6 +110,11 @@ def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray] | None:
     node ``N`` if only one cycle contains it. That needs every edge on at most
     two cycles, in opposite directions, as on 2-D grids and planar meshes.
     Edges on no cycle get no arc (-1).
+
+    Cycles that traverse a shared edge the same way are first reversed where
+    `_orient_cycles` can make every shared edge run both ways; the returned
+    mask marks them. Reversing cycle ``c`` negates row ``c`` of V and its
+    residue, which leaves the program unchanged.
     """
     N, M = V.shape
     V = V.tocsc()
@@ -73,13 +128,15 @@ def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray] | None:
     r2, s2 = np.full(edge.size, N, dtype=np.int64), -s1
     two = count[edge] == 2
     r2[two], s2[two] = V.indices[first[two] + 1], V.data[first[two] + 1]
-    if np.any(s1 == s2):  # two cycles traverse the edge in the same direction
+    reverse = _orient_cycles(N, r1[two], r2[two], s1[two] == s2[two])
+    if reverse is None:
         return None
+    forwards = (s1 > 0) != reverse[r1]
     tail = np.full(M, -1, dtype=np.int64)
     head = np.full(M, -1, dtype=np.int64)
-    tail[edge] = np.where(s1 > 0, r1, r2)
-    head[edge] = np.where(s1 > 0, r2, r1)
-    return tail, head
+    tail[edge] = np.where(forwards, r1, r2)
+    head[edge] = np.where(forwards, r2, r1)
+    return tail, head, reverse
 
 
 def _solve_min_cost_flow(
@@ -112,6 +169,37 @@ def _solve_min_cost_flow(
     flow[order] = graph.result()
     k[edge] = flow[: edge.size] - flow[edge.size :]
     return k
+
+
+def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Solve ``min sum(w * |m[v] - m[u] + d|)`` with LEMON, reading m off as node potentials.
+
+    The LP dual of this program is a circulation: a flow ``y[e]`` in
+    ``[-w[e], w[e]]`` from u to v, conserved at every vertex, maximizing
+    ``d @ y``. LEMON takes non-negative costs only, so each edge becomes one
+    arc that carries ``g = w - sign(d) * y`` in ``[0, 2 w]`` at cost ``|d|``:
+    from v to u when ``d >= 0``, else from u to v, with the fixed flow
+    ``sign(d) * w`` from u to v moved into the supplies. The reduced cost of
+    that arc is then ``|m[v] - m[u] + d|`` with the right sign, so
+    complementary slackness makes LEMON's potentials an optimal m. A
+    circulation always exists (``g = w``), so the flow is never infeasible.
+    The weights must be non-negative integers.
+    """
+    u, v = edges[:, 0].astype(np.int64), edges[:, 1].astype(np.int64)
+    d, w = d.astype(np.int64), w.astype(np.int64)
+    up = d >= 0
+    starts, ends = np.where(up, v, u), np.where(up, u, v)
+    fixed = np.where(up, w, -w)
+    supply = np.zeros(int(edges.max()) + 1, dtype=np.int64)
+    np.add.at(supply, v, fixed)
+    np.add.at(supply, u, -fixed)
+    order = np.lexsort((ends, starts))  # pylmcf wants arcs sorted by (start, end)
+    graph = pylmcf.Graph(supply.size, edge_starts=starts[order], edge_ends=ends[order])
+    graph.set_node_supply(supply)
+    graph.set_edge_costs(np.abs(d)[order])
+    graph.set_edge_capacities(2 * w[order])
+    graph.solve()
+    return graph.potentials()
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
@@ -233,8 +321,7 @@ def calculate_k(
         weights are not non-negative integers or the cycles do not form
         a min-cost flow.
     """
-    if solver not in ("auto", "highs", "lemon"):
-        raise ValueError(f"solver must be 'auto', 'highs' or 'lemon'; got {solver!r}")
+    _check_solver(solver)
     M, N = edges.shape[0], len(simplices)
 
     edge_dict = {tuple(x): i for i, x in enumerate(edges)}
@@ -288,26 +375,16 @@ def calculate_k(
         c = np.tile(weights, 2)
 
     w = np.asarray(c[:M], dtype=np.float64)
-    integer = np.array_equal(w, np.round(w))  # also False for NaN
-    non_negative = np.min(w, initial=0) >= 0
-    arcs = None
-    if solver != "highs" and integer and non_negative:
-        arcs = _dual_graph_arcs(V)
+    arcs = _dual_graph_arcs(V) if _lemon_takes(w, solver) else None
     if solver == "lemon" and arcs is None:
-        if not integer:
-            raise ValueError(
-                "solver='lemon' needs integer weights; scale and round them first, "
-                "e.g. np.round(weights * 1000)"
-            )
-        if not non_negative:
-            raise ValueError("solver='lemon' needs non-negative weights")
         raise ValueError(
-            "solver='lemon' needs every edge on at most two cycles, traversed in "
-            "opposite directions"
+            "solver='lemon' needs every edge on at most two cycles, and cycles that can "
+            "be oriented to traverse each shared edge in opposite directions"
         )
     if arcs is not None:
+        tail, head, reverse = arcs
         try:
-            k = _solve_min_cost_flow(*arcs, b_eq, w)
+            k = _solve_min_cost_flow(tail, head, np.where(reverse, -b_eq, b_eq), w)
         except RuntimeError as err:
             k, info = None, OptimizeResult(fun=None, success=False, status=2, message=str(err))
         else:
@@ -330,15 +407,18 @@ def calculate_m(
     differences: np.ndarray,
     weights: np.ndarray | None = None,
     *,
+    solver: str = "auto",
     return_info: bool = False,
 ) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
     """Solve per-vertex integer offsets from quantized edge differences.
 
     Finds per-vertex integers ``m`` with ``m[u] - m[v]`` matching
     ``differences`` on each edge ``(u, v)``, minimizing the weighted L1
-    norm of the slacks through HiGHS.
+    norm of the slacks.
 
-    The constraint matrix (an edge-node incidence matrix beside two
+    LEMON solves the LP dual of this program, a min-cost circulation, and
+    ``m`` is read off its node potentials. HiGHS solves the program itself:
+    its constraint matrix (an edge-node incidence matrix beside two
     identity blocks) is totally unimodular, so the LP relaxation already
     has an integral optimum; the integer program is only a fallback.
 
@@ -350,6 +430,12 @@ def calculate_m(
         Quantized differences, of any integer dtype.
     weights : (M,) np.ndarray, optional
         Per-edge weights. Defaults to uniform weights.
+    solver : {"auto", "highs", "lemon"}, optional
+        "lemon" solves the dual circulation with LEMON's network simplex,
+        through pylmcf, and needs non-negative integer weights; to use
+        fractional weights, scale and round them first. "highs" solves the
+        program as a linear program with HiGHS. "auto" uses LEMON when the
+        weights allow it, and HiGHS otherwise. Defaults to "auto".
     return_info : bool, optional
         Also return the solver report. Defaults to False.
 
@@ -361,14 +447,39 @@ def calculate_m(
     info : scipy.optimize.OptimizeResult
         Only returned if ``return_info`` is True. ``fun`` is the weighted
         L1 norm of the slacks (None without a solution); ``success``,
-        ``status`` and ``message`` come from HiGHS, and ``solver`` is
-        "highs"; ``ilp_fallback`` is True when the LP optimum was
-        fractional and the integer program was solved instead.
+        ``status`` and ``message`` come from the solver, which ``solver``
+        names ("lemon" or "highs"); ``ilp_fallback`` is True when the LP
+        optimum was fractional and HiGHS solved the integer program
+        instead.
+
+    Raises
+    ------
+    TypeError
+        If ``differences`` does not have an integer dtype.
+    ValueError
+        If ``solver`` is unknown, or ``solver="lemon"`` and the weights are
+        not non-negative integers.
     """
+    _check_solver(solver)
     if not np.issubdtype(differences.dtype, np.integer):
         raise TypeError(f"differences must have an integer dtype; got {differences.dtype}")
     M = edges.shape[0]
     N = np.max(edges) + 1
+    if weights is None:
+        weights = np.ones((M,), dtype=np.int64)
+
+    w = np.asarray(weights, dtype=np.float64)
+    if _lemon_takes(w, solver):
+        m = _solve_offsets_by_flow(edges, differences, w)
+        info = OptimizeResult(
+            fun=float(w @ np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences)),
+            success=True,
+            status=0,
+            message="Optimal node potentials found by LEMON's network simplex.",
+            ilp_fallback=False,
+            solver="lemon",
+        )
+        return (m, info) if return_info else m
 
     vals = np.concatenate((np.ones((M,), dtype=np.int64), -np.ones((M,), dtype=np.int64)))
     rows = np.tile(np.arange(M), 2)
@@ -384,8 +495,6 @@ def calculate_m(
         ),
         shape=(M, N + 2 * M),
     )
-    if weights is None:
-        weights = np.ones((M,), dtype=np.int64)
     c = np.concatenate((np.zeros(N, dtype=np.int64), weights, weights))
 
     x, info = _solve_integer_program(c, A_eq, b_eq=differences)

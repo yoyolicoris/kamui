@@ -216,6 +216,57 @@ def test_calculate_k_uses_highs_when_cycles_are_not_a_network():
         calculate_k(edges, simplices, differences, solver="lemon")
 
 
+def _reverse_some(simplices, seed):
+    flip = np.random.default_rng(seed).random(len(simplices)) < 0.5
+    return [list(s)[::-1] if f else list(s) for s, f in zip(simplices, flip)]
+
+
+@pytest.mark.parametrize("case", ["grid", "grid, both axes cyclical", "Delaunay mesh"])
+def test_calculate_k_lemon_reorients_cycles(case):
+    # Cycles listed in either direction, as other meshing tools may give them,
+    # are reversed until shared edges run both ways, so LEMON still applies.
+    if case == "Delaunay mesh":
+        edges, simplices, n_vertices = _delaunay_mesh()
+    else:
+        cyclical_axis = (0, 1) if case == "grid, both axes cyclical" else ()
+        edges, simplices = get_2d_edges_and_simplices((9, 8), cyclical_axis=cyclical_axis)
+        n_vertices = 72
+    simplices = _reverse_some(simplices, seed=6)
+    differences = _wrapped_differences(edges, n_vertices, seed=7)
+    # uniform weights: random phases leave residues nearly everywhere, which
+    # can zero every adaptive weight and make any k optimal
+    k, info = calculate_k(edges, simplices, differences, adaptive_weighting=False, return_info=True)
+    _, reference = calculate_k(
+        edges, simplices, differences, adaptive_weighting=False, solver="highs", return_info=True
+    )
+    assert info.solver == "lemon" and info.success
+    assert reference.fun > 0
+    assert info.fun == pytest.approx(reference.fun)
+    np.testing.assert_allclose(_loop_sums(edges, simplices, differences + k), 0, atol=1e-9)
+
+
+def _mobius_strip(n=4):
+    # A strip of n squares whose ends are glued with a half twist: top vertex
+    # i is i, bottom vertex i is n + i, and the top of square n - 1 continues
+    # into the bottom of square 0. No orientation of the squares makes every
+    # shared edge run both ways.
+    top = list(range(n)) + [n]
+    bottom = list(range(n, 2 * n)) + [0]
+    squares = [[top[i], top[i + 1], bottom[i + 1], bottom[i]] for i in range(n)]
+    pairs = {tuple(sorted((s[j - 1], s[j]))) for s in squares for j in range(4)}
+    return np.array(sorted(pairs)), squares
+
+
+def test_calculate_k_uses_highs_on_a_mobius_strip():
+    edges, squares = _mobius_strip()
+    differences = _wrapped_differences(edges, 8, seed=8)
+    k, info = calculate_k(edges, squares, differences, return_info=True)
+    assert info.solver == "highs"
+    np.testing.assert_allclose(_loop_sums(edges, squares, differences + k), 0, atol=1e-9)
+    with pytest.raises(ValueError, match="oriented"):
+        calculate_k(edges, squares, differences, solver="lemon")
+
+
 def test_calculate_k_uses_highs_for_a_cycle_that_repeats_an_edge():
     # traversing the triangle twice puts a 2 in the cycle matrix
     edges, _ = _triangle()
@@ -318,15 +369,19 @@ def test_calculate_m_rejects_non_integer_differences():
 
 def test_calculate_m_reports_lp_solution():
     edges = np.array([[0, 1], [1, 2]])
-    m, info = calculate_m(edges, np.array([1, -1], dtype=np.int64), return_info=True)
+    m, info = calculate_m(
+        edges, np.array([1, -1], dtype=np.int64), solver="highs", return_info=True
+    )
     np.testing.assert_array_equal(m[edges[:, 0]] - m[edges[:, 1]], [1, -1])
-    assert info.success and not info.ilp_fallback
+    assert info.success and not info.ilp_fallback and info.solver == "highs"
     assert info.fun == pytest.approx(0.0)
 
 
 def test_calculate_m_reports_failure(monkeypatch):
     monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
-    m, info = calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), return_info=True)
+    m, info = calculate_m(
+        np.array([[0, 1]]), np.array([1], dtype=np.int64), solver="highs", return_info=True
+    )
     assert m is None
     assert not info.success and info.status == 2 and "infeasible" in info.message
 
@@ -335,12 +390,67 @@ def test_calculate_m_rejects_non_optimal_solution(monkeypatch):
     # e.g. a time limit: HiGHS returns a point but does not report success
     result = _failed_solve(x=np.zeros(4), status=1, message="Time limit reached.")
     monkeypatch.setattr(core, "linprog", lambda *a, **k: result)
-    assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
+    assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), solver="highs") is None
 
 
 def test_calculate_m_returns_none_when_infeasible(monkeypatch):
     monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
-    assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64)) is None
+    assert calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), solver="highs") is None
+
+
+def _edgelist_cost(edges, differences, weights, m):
+    return float(weights @ np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences))
+
+
+@pytest.mark.parametrize(
+    "case", ["grid", "integer weights", "zero weights", "Delaunay mesh", "two components"]
+)
+def test_calculate_m_lemon_matches_highs(case):
+    # LEMON solves the dual circulation and returns its node potentials as m;
+    # they must reach HiGHS's optimal cost.
+    rng = np.random.default_rng(9)
+    if case == "Delaunay mesh":
+        edges, _, n_vertices = _delaunay_mesh()
+    else:
+        edges, _ = get_2d_edges_and_simplices((9, 8))
+        n_vertices = 72
+    if case == "two components":
+        edges = np.concatenate((edges, edges + n_vertices))
+        n_vertices *= 2
+    psi = rng.uniform(-np.pi, np.pi, n_vertices)
+    differences = np.round((psi[edges[:, 1]] - psi[edges[:, 0]]) / (2 * np.pi)).astype(np.int64)
+    weights = np.ones(len(edges), dtype=np.int64)
+    if case == "integer weights":
+        weights = rng.integers(1, 10, len(edges))
+    elif case == "zero weights":
+        weights = rng.integers(0, 3, len(edges))
+    m, info = calculate_m(edges, differences, weights, return_info=True)
+    m_ref, reference = calculate_m(edges, differences, weights, solver="highs", return_info=True)
+    assert info.solver == "lemon" and reference.solver == "highs"
+    assert info.success and not info.ilp_fallback
+    assert m.dtype == np.int64 and m.shape == (n_vertices,)
+    assert reference.fun > 0
+    assert info.fun == pytest.approx(reference.fun)
+    assert _edgelist_cost(edges, differences, weights, m) == pytest.approx(info.fun)
+
+
+def test_calculate_m_leaves_fractional_and_negative_weights_to_highs():
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+    differences = np.array([1, 0, 0], dtype=np.int64)
+    m, info = calculate_m(edges, differences, np.array([0.5, 1.0, 1.0]), return_info=True)
+    assert info.solver == "highs"
+    assert info.fun == pytest.approx(0.5)
+    with pytest.raises(ValueError, match="integer weights"):
+        calculate_m(edges, differences, np.array([0.5, 1.0, 1.0]), solver="lemon")
+    m, info = calculate_m(edges, differences, -np.ones(3), return_info=True)
+    assert info.solver == "highs" and m is None  # unbounded
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_m(edges, differences, -np.ones(3), solver="lemon")
+
+
+def test_calculate_m_rejects_unknown_solver():
+    with pytest.raises(ValueError, match="solver must be"):
+        calculate_m(np.array([[0, 1]]), np.array([1], dtype=np.int64), solver="cplex")
 
 
 def test_puma_leaves_consistent_phase_alone():
