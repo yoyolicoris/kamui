@@ -299,7 +299,7 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
     if np.any(cols < 0):
         raise ValueError("simplices contain invalid edges")
     indptr = np.concatenate(([0], np.cumsum(lengths)))
-    V = sp.csr_matrix((vals, cols.astype(np.int32), indptr), shape=(lengths.size, M))
+    V = sp.csr_matrix((vals, cols, indptr), shape=(lengths.size, M))  # SciPy picks int32 if it fits
     V.sum_duplicates()  # a cycle that walks an edge twice adds up its entries
     return V
 
