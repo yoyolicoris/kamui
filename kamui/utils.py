@@ -225,7 +225,7 @@ def _merge_weights(
     merge = {"sum": np.sum, "min": np.min, "max": np.max}.get(merging_method)
     if merge is None:
         raise ValueError(f"merging_method must be 'sum', 'min' or 'max'; got {merging_method!r}")
-    edge_weights = merge(np.asarray(weights, dtype=np.float64).ravel()[edges], axis=1)
+    edge_weights = merge(np.asarray(weights).ravel()[edges], axis=1)
     edge_weights[np.isnan(edge_weights)] = 0
     return edge_weights
 

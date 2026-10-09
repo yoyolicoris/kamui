@@ -92,6 +92,16 @@ def test_merge_weights_uses_weights_as_given():
     np.testing.assert_array_equal(_merge_weights(weights, edges, "max"), [5, 10, 15, 15])
 
 
+def test_merge_weights_keeps_integer_weights_integer_without_overflow():
+    # no float cast: integers stay integers for LEMON, and NumPy widens
+    # small integer types when summing
+    weights = np.array([200, 100, 3], dtype=np.uint8)
+    edges = np.array([[0, 1], [1, 2]])
+    out = _merge_weights(weights, edges, "sum")
+    assert np.issubdtype(out.dtype, np.integer)
+    np.testing.assert_array_equal(out, [300, 103])
+
+
 @pytest.mark.parametrize("merging_method", ["sum", "min", "max"])
 def test_merge_weights_nan_becomes_zero(merging_method):
     weights = np.array([[np.nan, 1.0], [2.0, 3.0]])
