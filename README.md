@@ -163,7 +163,8 @@ The edgelist ILP needs no cycles, because it optimizes vertex offsets $`m \in \m
 
 The term inside the absolute value is the edge ambiguity $`k_e`$. This is therefore the cost of the simplex ILP, optimized over offsets instead of ambiguities. The two optima agree whenever the cycles cover every loop of the graph, as grid cells and mesh triangles do.
 
-Its LP dual is a min-cost circulation on the graph itself, with a flow $`y_e \in [-w_e, w_e]`$ along each edge that maximizes $`\sum_e y_e \, 	ext{round}\left( (\psi_v - \psi_u) / 2\pi ight)`$. LEMON solves that circulation, and its node potentials are an optimal $`m`$.
+Its LP dual is a min-cost circulation on the graph itself, with a flow $`y_e \in [-w_e, w_e]`$ along each edge that maximizes $`\sum_e y_e \, 	ext{round}\left( (\psi_v - \psi_u) / 2\pi 
+ight)`$. LEMON solves that circulation, and its node potentials are an optimal $`m`$.
 
 PUMA instead uses graph cuts to minimize the $`p`$-norm of the unwrapped differences:
 
@@ -213,6 +214,8 @@ Kamui expects a single connected graph with finite phase values. NaNs, or region
 | 600×600 | 9.8 s, 1.7 GB | 1.6 s, 0.8 GB |
 | 1000×1000 | 57 s, 2.6 GB | 5.0 s, 2.2 GB |
 | 2000×2000 | — | 32 s |
+
+The edgelist path (`use_edgelist=True`) and weighted grids with `weight_scale=1000` gain about 4× from LEMON: at 600×600, from 78 s to 18 s and from 16 s to 4.4 s.
 
 Both solvers reach the same optimal cost. With LEMON, the solve is no longer the bottleneck: on large grids, most of the time and memory go into Kamui's own Python code that builds the program, which [#24](https://github.com/yoyolicoris/kamui/issues/24) addresses. Scenes such as the 4628×2562 interferograms in [#11](https://github.com/yoyolicoris/kamui/issues/11) and [#12](https://github.com/yoyolicoris/kamui/issues/12) still need tens of GB of memory.
 
