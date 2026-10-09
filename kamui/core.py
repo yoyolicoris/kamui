@@ -6,6 +6,7 @@ as min-cost flows with LEMON where they can and with HiGHS otherwise, and
 :func:`puma` runs the graph-cut PUMA algorithm when PyMaxflow is installed.
 """
 
+import itertools
 from collections.abc import Iterable
 
 import numpy as np
@@ -156,8 +157,10 @@ def _sorted_graph(
     n_nodes: int, starts: np.ndarray, ends: np.ndarray
 ) -> tuple[pylmcf.Graph, np.ndarray]:
     """Return a pylmcf graph of the arcs, which it needs sorted by (start, end), and that order."""
-    order = np.argsort(starts * n_nodes + ends, kind="stable")
-    return pylmcf.Graph(n_nodes, edge_starts=starts[order], edge_ends=ends[order]), order
+    order = np.argsort(starts * n_nodes + ends, kind="stable").astype(np.int32)
+    # int32 is LEMON's index type, so pylmcf takes these without a copy
+    starts, ends = starts[order].astype(np.int32), ends[order].astype(np.int32)
+    return pylmcf.Graph(n_nodes, edge_starts=starts, edge_ends=ends), order
 
 
 def _solve_min_cost_flow(
@@ -174,18 +177,20 @@ def _solve_min_cost_flow(
     edge = np.flatnonzero(tail >= 0)
     if edge.size == 0:
         return k
-    cost = w[edge].astype(np.int64)
-    starts = np.concatenate((tail[edge], head[edge]))
-    ends = np.concatenate((head[edge], tail[edge]))
     supply = np.append(b, -b.sum()).astype(np.int64)
-    graph, order = _sorted_graph(supply.size, starts, ends)
+    # pass the arcs as temporaries, so that only pylmcf's sorted copies outlive the call
+    graph, order = _sorted_graph(
+        supply.size,
+        np.concatenate((tail[edge], head[edge])),
+        np.concatenate((head[edge], tail[edge])),
+    )
     graph.set_node_supply(supply)
-    graph.set_edge_costs(np.tile(cost, 2)[order])
+    graph.set_edge_costs(np.tile(w[edge].astype(np.int64), 2)[order])
     # an optimal flow never carries more than the total supply on any arc
     capacity = np.abs(supply).sum() // 2 + 1
-    graph.set_edge_capacities(np.full(starts.size, capacity, dtype=np.int64))
+    graph.set_edge_capacities(np.full(order.size, capacity, dtype=np.int64))
     graph.solve()
-    flow = np.empty(starts.size, dtype=np.int64)
+    flow = np.empty(order.size, dtype=np.int64)
     flow[order] = graph.result()
     k[edge] = flow[: edge.size] - flow[edge.size :]
     return k
@@ -220,6 +225,63 @@ def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> n
     graph.set_edge_capacities(2 * w[order])
     graph.solve()
     return graph.potentials()
+
+
+def _cycle_steps(simplices: Iterable[Iterable[int]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return each step u -> v around the cycles, end to end, and the length of each cycle.
+
+    Each cycle closes from its last vertex back to its first. An (S, k) array
+    takes the vectorized path; other iterables are flattened first.
+    """
+    if isinstance(simplices, np.ndarray) and simplices.ndim == 2:
+        heads = simplices.ravel().astype(np.int64)
+        tails = np.roll(simplices, 1, axis=1).ravel().astype(np.int64)
+        return tails, heads, np.full(len(simplices), simplices.shape[1])
+    lengths = np.fromiter(map(len, simplices), dtype=np.int64, count=len(simplices))
+    vertices = itertools.chain.from_iterable(simplices)
+    heads = np.fromiter(vertices, dtype=np.int64, count=int(lengths.sum()))
+    ends = np.cumsum(lengths)
+    closed = lengths > 0
+    previous = np.arange(-1, heads.size - 1)
+    previous[(ends - lengths)[closed]] = ends[closed] - 1
+    return heads[previous], heads, lengths
+
+
+def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.csr_matrix:
+    """Return the cycle-edge matrix V, raising ValueError for repeated or missing edges.
+
+    ``V[c, e]`` is 1 where cycle ``c`` walks edge ``e = (u, v)`` from u to v,
+    and -1 where it walks it from v to u. Edges are looked up by the code
+    ``u * n + v`` in one sorted array, the forward direction first.
+    """
+    M = len(edges)
+    tails, heads, lengths = _cycle_steps(simplices)
+    n = max(int(np.max(edges, initial=-1)), int(np.max(heads, initial=-1))) + 1
+    codes = edges[:, 0].astype(np.int64) * n + edges[:, 1]
+    order = np.argsort(codes)
+    if np.any(np.diff(codes[order]) == 0):
+        raise ValueError("edges must be unique")
+    # a sentinel above every code, so that misses need no bounds check
+    sorted_codes = np.append(codes[order], np.iinfo(np.int64).max)
+    order = np.append(order, -1)
+
+    def find(code: np.ndarray) -> np.ndarray:
+        position = np.searchsorted(sorted_codes, code)
+        missed = sorted_codes[position] != code
+        np.take(order, position, out=position)
+        position[missed] = -1
+        return position
+
+    cols = find(tails * n + heads)
+    vals = np.where(cols >= 0, 1, -1).astype(np.int8)
+    backwards = np.flatnonzero(cols < 0)
+    cols[backwards] = find(heads[backwards] * n + tails[backwards])
+    if np.any(cols < 0):
+        raise ValueError("simplices contain invalid edges")
+    indptr = np.concatenate(([0], np.cumsum(lengths)))
+    V = sp.csr_matrix((vals, cols.astype(np.int32), indptr), shape=(lengths.size, M))
+    V.sum_duplicates()  # a cycle that walks an edge twice adds up its entries
+    return V
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
@@ -341,40 +403,13 @@ def calculate_k(
         or the cycles do not form a min-cost flow.
     """
     _check_solver(solver)
-    M, N = edges.shape[0], len(simplices)
-
-    edge_dict = {tuple(x): i for i, x in enumerate(edges)}
-    if len(edge_dict) != M:
-        raise ValueError("edges must be unique")
-    rows = []
-    cols = []
-    vals = []
-    for i, simplex in enumerate(simplices):
-        u = simplex[-1]
-        for v in simplex:
-            key = (u, v)
-            rows.append(i)
-            if key in edge_dict:
-                cols.append(edge_dict[key])
-                vals.append(1)
-            else:
-                try:
-                    cols.append(edge_dict[(v, u)])
-                except KeyError:
-                    raise ValueError("simplices contain invalid edges")
-                vals.append(-1)
-            u = v
-    rows = np.array(rows)
-    cols = np.array(cols)
-    vals = np.array(vals)
-
-    V = sp.csr_matrix((vals, (rows, cols)), shape=(N, M))
+    M = edges.shape[0]
+    V = _cycle_matrix(edges, simplices)
     b_eq = -np.round(V @ differences).astype(np.int64)
 
     if weights is None:
         # each edge costs the number of its cycles that have no residue
-        W = np.abs(V)
-        w = W.sum(0).A1 - np.minimum(np.abs(b_eq), 1) @ W
+        w = abs(V).T @ (np.abs(b_eq) == 0).astype(np.int64)
     else:
         w = _edge_weights(weights, M)
 
@@ -391,6 +426,7 @@ def calculate_k(
         if solver == "lemon" and missing:
             raise ValueError(f"solver='lemon' needs {missing}")
     if arcs is not None:
+        del V  # LEMON needs only the arcs; free the matrix before it allocates
         tail, head, reverse = arcs
         try:
             k = _solve_min_cost_flow(tail, head, np.where(reverse, -b_eq, b_eq), w)

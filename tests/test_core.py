@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+import scipy.sparse as sp
 from scipy.spatial import Delaunay
 
 import kamui.core as core
@@ -141,6 +142,54 @@ def test_calculate_k_returns_none_when_infeasible(monkeypatch):
     edges, simplices = _triangle()
     monkeypatch.setattr(core, "linprog", lambda *a, **k: _failed_solve(x=None))
     assert calculate_k(edges, simplices, np.array([0.1, 0.1, -0.2]), solver="highs") is None
+
+
+def _reference_cycle_matrix(edges, simplices):
+    # the per-entry loop calculate_k used before #24, kept as the specification
+    edge_dict = {tuple(x): i for i, x in enumerate(edges.tolist())}
+    rows, cols, vals = [], [], []
+    for i, simplex in enumerate(simplices):
+        u = simplex[-1]
+        for v in simplex:
+            rows.append(i)
+            if (u, v) in edge_dict:
+                cols.append(edge_dict[(u, v)])
+                vals.append(1)
+            else:
+                cols.append(edge_dict[(v, u)])
+                vals.append(-1)
+            u = v
+    return sp.csr_matrix((vals, (rows, cols)), shape=(len(simplices), len(edges)))
+
+
+@pytest.mark.parametrize(
+    "case", ["Delaunay mesh", "cyclic grid", "mixed lengths", "both orientations"]
+)
+def test_cycle_matrix_matches_the_reference_loop(case):
+    if case == "Delaunay mesh":
+        edges, simplices, _ = _delaunay_mesh()
+        simplices = _reverse_some(simplices, seed=11)
+    elif case == "cyclic grid":
+        edges, simplices = get_2d_edges_and_simplices((5, 6), cyclical_axis=(0, 1))
+    elif case == "mixed lengths":
+        # a square and a triangle sharing edge (1, 2), and a cycle that walks (0, 1) twice
+        edges = np.array([[0, 1], [1, 2], [2, 3], [3, 0], [2, 4], [4, 1]])
+        simplices = [[0, 1, 2, 3], [1, 4, 2], [0, 1, 0, 1]]
+    else:
+        # both orientations of edge (0, 1) are listed: the forward one is used
+        edges = np.array([[0, 1], [1, 0], [1, 2], [2, 0]])
+        simplices = [[0, 1, 2], [1, 0, 2]]
+    expected = _reference_cycle_matrix(edges, simplices).toarray()
+    np.testing.assert_array_equal(core._cycle_matrix(edges, simplices).toarray(), expected)
+    if case == "cyclic grid":  # the (S, 4) array path
+        array = np.array(simplices)
+        np.testing.assert_array_equal(core._cycle_matrix(edges, array).toarray(), expected)
+
+
+def test_cycle_matrix_gives_an_empty_cycle_an_empty_row():
+    edges, simplices = _triangle()
+    V = core._cycle_matrix(edges, [[], *simplices])
+    np.testing.assert_array_equal(V.toarray(), [[0, 0, 0], [1, 1, 1]])
 
 
 def _loop_sums(edges, simplices, values):

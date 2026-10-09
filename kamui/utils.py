@@ -18,26 +18,10 @@ __all__ = [
 ]
 
 
-def get_2d_edges_and_simplices(
+def _grid_2d(
     shape: tuple[int, int], cyclical_axis: int | tuple[int, ...] = ()
-) -> tuple[np.ndarray, Iterable[Iterable[int]]]:
-    """Compute the edges and simplices for a 2-D grid.
-
-    Parameters
-    ----------
-    shape : tuple of int
-        The shape of the grid.
-    cyclical_axis : int or tuple of int, optional
-        The axis (or axes) treated as cyclical. Axes of length 2 or less
-        are already cyclical and are ignored. Defaults to ().
-
-    Returns
-    -------
-    edges : (M, 2) np.ndarray
-        Array of edges, including wrap-around edges for cyclical axes.
-    simplices : list of list of int
-        Elementary 4-cycles of the grid, as vertex index lists.
-    """
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the edges and the (S, 4) array of elementary cycles of a 2-D grid."""
     nodes = np.arange(np.prod(shape)).reshape(shape)
     if isinstance(cyclical_axis, int):
         cyclical_axis = (cyclical_axis,)
@@ -69,7 +53,7 @@ def get_2d_edges_and_simplices(
             nodes[:-1, 1:].ravel(),
         ),
         axis=1,
-    ).tolist()
+    )
     if len(cyclical_axis) > 0:
         pairs = []
         for ax in cyclical_axis:
@@ -80,28 +64,16 @@ def get_2d_edges_and_simplices(
             # last row, so every edge two cells share is traversed in opposite
             # directions and LEMON needs no cycle reversals.
             pairs.append((last, first) if ax == 0 else (first, last))
-        simplices += np.concatenate(
-            tuple(
-                np.stack(
-                    (
-                        x[:-1],
-                        y[:-1],
-                        y[1:],
-                        x[1:],
-                    ),
-                    axis=1,
-                )
-                for x, y in pairs
-            ),
-            axis=0,
-        ).tolist()
+        simplices = np.concatenate(
+            [simplices] + [np.stack((x[:-1], y[:-1], y[1:], x[1:]), axis=1) for x, y in pairs]
+        )
     return edges, simplices
 
 
-def get_3d_edges_and_simplices(
-    shape: tuple[int, int, int], cyclical_axis: int | tuple[int, ...] = ()
+def get_2d_edges_and_simplices(
+    shape: tuple[int, int], cyclical_axis: int | tuple[int, ...] = ()
 ) -> tuple[np.ndarray, Iterable[Iterable[int]]]:
-    """Compute the edges and simplices for a 3-D grid.
+    """Compute the edges and simplices for a 2-D grid.
 
     Parameters
     ----------
@@ -118,6 +90,14 @@ def get_3d_edges_and_simplices(
     simplices : list of list of int
         Elementary 4-cycles of the grid, as vertex index lists.
     """
+    edges, simplices = _grid_2d(shape, cyclical_axis)
+    return edges, simplices.tolist()
+
+
+def _grid_3d(
+    shape: tuple[int, int, int], cyclical_axis: int | tuple[int, ...] = ()
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the edges and the (S, 4) array of elementary cycles of a 3-D grid."""
     nodes = np.arange(np.prod(shape)).reshape(shape)
     if isinstance(cyclical_axis, int):
         cyclical_axis = (cyclical_axis,)
@@ -172,45 +152,49 @@ def get_3d_edges_and_simplices(
             ),
         ),
         axis=0,
-    ).tolist()
+    )
 
     if len(cyclical_axis) > 0:
-        simplices += np.concatenate(
-            sum(
-                (
-                    (
-                        np.stack(
-                            (
-                                x[1:, :].ravel(),
-                                y[1:, :].ravel(),
-                                y[:-1, :].ravel(),
-                                x[:-1, :].ravel(),
-                            ),
-                            axis=1,
-                        ),
-                        np.stack(
-                            (
-                                x[:, 1:].ravel(),
-                                y[:, 1:].ravel(),
-                                y[:, :-1].ravel(),
-                                x[:, :-1].ravel(),
-                            ),
-                            axis=1,
-                        ),
-                    )
-                    for x, y in [
-                        (
-                            np.squeeze(np.take(nodes, [0], axis=ax), axis=ax),
-                            np.squeeze(np.take(nodes, [-1], axis=ax), axis=ax),
-                        )
-                        for ax in cyclical_axis
-                    ]
-                ),
-                (),
-            ),
-            axis=0,
-        ).tolist()
+        blocks = [simplices]
+        for ax in cyclical_axis:
+            x = np.squeeze(np.take(nodes, [0], axis=ax), axis=ax)
+            y = np.squeeze(np.take(nodes, [-1], axis=ax), axis=ax)
+            blocks.append(
+                np.stack(
+                    (x[1:, :].ravel(), y[1:, :].ravel(), y[:-1, :].ravel(), x[:-1, :].ravel()), 1
+                )
+            )
+            blocks.append(
+                np.stack(
+                    (x[:, 1:].ravel(), y[:, 1:].ravel(), y[:, :-1].ravel(), x[:, :-1].ravel()), 1
+                )
+            )
+        simplices = np.concatenate(blocks)
     return edges, simplices
+
+
+def get_3d_edges_and_simplices(
+    shape: tuple[int, int, int], cyclical_axis: int | tuple[int, ...] = ()
+) -> tuple[np.ndarray, Iterable[Iterable[int]]]:
+    """Compute the edges and simplices for a 3-D grid.
+
+    Parameters
+    ----------
+    shape : tuple of int
+        The shape of the grid.
+    cyclical_axis : int or tuple of int, optional
+        The axis (or axes) treated as cyclical. Axes of length 2 or less
+        are already cyclical and are ignored. Defaults to ().
+
+    Returns
+    -------
+    edges : (M, 2) np.ndarray
+        Array of edges, including wrap-around edges for cyclical axes.
+    simplices : list of list of int
+        Elementary 4-cycles of the grid, as vertex index lists.
+    """
+    edges, simplices = _grid_3d(shape, cyclical_axis)
+    return edges, simplices.tolist()
 
 
 def _merge_weights(

@@ -24,6 +24,8 @@ from scipy.optimize import OptimizeResult
 
 from .core import calculate_k, calculate_m, integrate, puma
 from .utils import (
+    _grid_2d,
+    _grid_3d,
     _merge_weights,
     get_2d_edges_and_simplices,
     get_3d_edges_and_simplices,
@@ -131,9 +133,9 @@ def unwrap_dimensional(
         start_i *= x.shape[i]
         start_i += s
     if x.ndim == 2:
-        edges, simplices = get_2d_edges_and_simplices(x.shape, cyclical_axis=cyclical_axis)
+        edges, simplices = _grid_2d(x.shape, cyclical_axis)
     elif x.ndim == 3:
-        edges, simplices = get_3d_edges_and_simplices(x.shape, cyclical_axis=cyclical_axis)
+        edges, simplices = _grid_3d(x.shape, cyclical_axis)
     else:
         raise ValueError("x must be 2D or 3D")
     psi = x.ravel()
