@@ -90,10 +90,9 @@ def test_merge_weights_uses_weights_as_given():
     np.testing.assert_array_equal(_merge_weights(weights, edges, "sum"), [5, 10, 20, 25])
     np.testing.assert_array_equal(_merge_weights(weights, edges, "min"), [0, 0, 5, 10])
     np.testing.assert_array_equal(_merge_weights(weights, edges, "max"), [5, 10, 15, 15])
-    np.testing.assert_array_equal(_merge_weights(weights, edges, "mean"), [2.5, 5, 10, 12.5])
 
 
-@pytest.mark.parametrize("merging_method", ["sum", "min", "max", "mean"])
+@pytest.mark.parametrize("merging_method", ["sum", "min", "max"])
 def test_merge_weights_nan_becomes_zero(merging_method):
     weights = np.array([[np.nan, 1.0], [2.0, 3.0]])
     edges = np.array([[0, 1], [0, 2], [1, 3], [2, 3]])
@@ -102,9 +101,11 @@ def test_merge_weights_nan_becomes_zero(merging_method):
     assert np.all(out[2:] > 0)
 
 
-def test_merge_weights_rejects_bad_merging_method():
+@pytest.mark.parametrize("merging_method", ["mean", "median"])
+def test_merge_weights_rejects_bad_merging_method(merging_method):
+    # "mean" is dropped: it unwraps like "sum" but turns odd integer sums into fractions
     with pytest.raises(ValueError, match="merging_method must be"):
-        _merge_weights(np.ones((2, 2)), np.array([[0, 1]]), "median")
+        _merge_weights(np.ones((2, 2)), np.array([[0, 1]]), merging_method)
 
 
 def test_prepare_weights_rescales_into_smoothing_range():

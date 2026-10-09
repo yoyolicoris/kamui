@@ -86,7 +86,7 @@ The reference pixel keeps its wrapped value. It defaults to the first pixel; cho
 
 ### Weights
 
-Per-pixel quality weights, such as InSAR coherence, tell the solver where corrections are cheap. Each edge gets the sum of its two pixels' weights; `merging_method="min"`, `"max"` or `"mean"` change that. Edges that touch a NaN weight get weight 0. Kamui uses the weights as given: multiplying them all by one factor does not change the result.
+Per-pixel quality weights, such as InSAR coherence, tell the solver where corrections are cheap. Each edge gets the sum of its two pixels' weights; `merging_method="min"` or `"max"` change that. Edges that touch a NaN weight get weight 0. Kamui uses the weights as given: multiplying them all by one factor does not change the result.
 
 LEMON needs integer weights, and Kamui does not round them for you. Fractional weights are solved by HiGHS, which is several times slower. To use LEMON, scale and round the weights yourself; a larger factor keeps more resolution:
 

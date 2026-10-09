@@ -93,10 +93,8 @@ def unwrap_dimensional(
     cyclical_axis : int or tuple of int, optional
         The axis (or axes) treated as cyclical. Defaults to ().
     merging_method : str, optional
-        How to combine the weights of an edge's two pixels: "sum", "min",
-        "max" or "mean". "sum" and "mean" give the same unwrapping, but only
-        "sum", "min" and "max" keep integer weights integer. Defaults to
-        "sum".
+        How to combine the weights of an edge's two pixels: "sum", "min" or
+        "max". Defaults to "sum".
     weights : np.ndarray, optional
         Non-negative per-pixel weights defining the 'goodness' of each
         value, shaped like x; NaN marks pixels without a weight, and edges

@@ -218,15 +218,13 @@ def _merge_weights(
 ) -> npt.NDArray[np.floating]:
     """Combine the two vertex weights of each edge, as given, without rescaling.
 
-    One of "sum", "min", "max" or "mean"; edges that touch a NaN weight get
-    0. Scaling every weight by one factor leaves the unwrapping unchanged,
-    and "sum", "min" and "max" keep integer weights integer for LEMON.
+    One of "sum", "min" or "max"; edges that touch a NaN weight get 0.
+    Scaling every weight by one factor leaves the unwrapping unchanged, and
+    all three keep integer weights integer for LEMON.
     """
-    merge = {"sum": np.sum, "min": np.min, "max": np.max, "mean": np.mean}.get(merging_method)
+    merge = {"sum": np.sum, "min": np.min, "max": np.max}.get(merging_method)
     if merge is None:
-        raise ValueError(
-            f"merging_method must be 'sum', 'min', 'max' or 'mean'; got {merging_method!r}"
-        )
+        raise ValueError(f"merging_method must be 'sum', 'min' or 'max'; got {merging_method!r}")
     edge_weights = merge(np.asarray(weights, dtype=np.float64).ravel()[edges], axis=1)
     edge_weights[np.isnan(edge_weights)] = 0
     return edge_weights
