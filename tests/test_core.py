@@ -196,24 +196,22 @@ def test_cycle_matrix_handles_shuffled_edges():
 
 
 @pytest.mark.parametrize("as_array", [False, True])
-def test_cycle_matrix_rejects_fractional_vertex_indices(as_array):
-    # 1.5 used to be truncated to vertex 1, silently solving another graph
+@pytest.mark.parametrize("vertex", [1.5, 1.0])
+def test_cycle_matrix_requires_integer_vertex_indices(as_array, vertex):
+    # floats used to be truncated (1.5 -> 1) or matched by accident (1.0 == 1)
     edges, _ = _triangle()
-    simplices = np.array([[0, 1.5, 2]]) if as_array else [[0, 1.5, 2]]
-    with pytest.raises(ValueError, match="simplices must hold integer vertex indices"):
+    simplices = np.array([[0, vertex, 2]]) if as_array else [[0, vertex, 2]]
+    with pytest.raises(TypeError, match="simplices must hold integer vertex indices"):
         core._cycle_matrix(edges, simplices)
-    with pytest.raises(ValueError, match="edges must hold integer vertex indices"):
-        core._cycle_matrix(edges + 0.5, [[0, 1, 2]])
+    with pytest.raises(TypeError, match="edges must hold integer vertex indices"):
+        core._cycle_matrix(edges.astype(float), [[0, 1, 2]])
 
 
-@pytest.mark.parametrize("as_array", [False, True])
-def test_cycle_matrix_accepts_whole_float_vertex_indices(as_array):
+def test_cycle_matrix_accepts_numpy_integer_vertices_in_lists():
     edges, simplices = _triangle()
-    floats = np.array(simplices, dtype=float) if as_array else [[0.0, 1.0, 2.0]]
+    rows = [np.array(s, dtype=np.int32) for s in simplices]
     expected = _reference_cycle_matrix(edges, simplices).toarray()
-    np.testing.assert_array_equal(
-        core._cycle_matrix(edges.astype(float), floats).toarray(), expected
-    )
+    np.testing.assert_array_equal(core._cycle_matrix(edges, rows).toarray(), expected)
 
 
 def test_cycle_matrix_counts_long_repeated_cycles_without_wrapping():

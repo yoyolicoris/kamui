@@ -7,6 +7,7 @@ as min-cost flows with LEMON where they can and with HiGHS otherwise, and
 """
 
 import itertools
+import operator
 from collections.abc import Iterable
 
 import numpy as np
@@ -228,11 +229,9 @@ def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> n
 
 
 def _vertex_indices(values: np.ndarray, name: str) -> np.ndarray:
-    """Return values as int64, raising ValueError unless they are whole numbers."""
-    if not np.issubdtype(values.dtype, np.integer) and not (
-        np.isfinite(values).all() and np.array_equal(values, np.round(values))
-    ):
-        raise ValueError(f"{name} must hold integer vertex indices")
+    """Return values as int64, raising TypeError unless they have an integer dtype."""
+    if not np.issubdtype(values.dtype, np.integer):
+        raise TypeError(f"{name} must hold integer vertex indices; got {values.dtype}")
     return values.astype(np.int64, copy=False)
 
 
@@ -247,11 +246,12 @@ def _cycle_steps(simplices: Iterable[Iterable[int]]) -> tuple[np.ndarray, np.nda
         tails = np.roll(cycles, 1, axis=1).ravel()
         return tails, cycles.ravel(), np.full(len(cycles), cycles.shape[1])
     lengths = np.fromiter(map(len, simplices), dtype=np.int64, count=len(simplices))
-    # read as floats, which hold every realistic vertex index exactly, so that
-    # fractional ones are rejected rather than truncated
-    vertices = itertools.chain.from_iterable(simplices)
-    flat = np.fromiter(vertices, dtype=np.float64, count=int(lengths.sum()))
-    heads = _vertex_indices(flat, "simplices")
+    # operator.index refuses floats, which np.fromiter would silently truncate
+    vertices = map(operator.index, itertools.chain.from_iterable(simplices))
+    try:
+        heads = np.fromiter(vertices, dtype=np.int64, count=int(lengths.sum()))
+    except TypeError as err:
+        raise TypeError(f"simplices must hold integer vertex indices: {err}") from None
     ends = np.cumsum(lengths)
     closed = lengths > 0
     previous = np.arange(-1, heads.size - 1)
@@ -416,6 +416,8 @@ def calculate_k(
 
     Raises
     ------
+    TypeError
+        If ``edges`` or ``simplices`` do not hold integer vertex indices.
     ValueError
         If the edges are not unique, the simplices use an edge not in
         ``edges``, ``weights`` does not have one entry per edge, ``solver``
