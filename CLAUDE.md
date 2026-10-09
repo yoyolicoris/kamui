@@ -29,12 +29,12 @@ CI runs Pixi with `locked: true`. After editing `pixi.toml`, run `pixi install` 
 The package has three modules.
 
 - **`kamui/__init__.py`** holds the public entry points.
-  - `unwrap_dimensional` builds the grid graph, turns per-pixel `weights` into per-edge weights with `prepare_weights` (sum of the two pixels by default, used as given without rescaling, NaN → 0), and hands off to `unwrap_arbitrary`.
+  - `unwrap_dimensional` builds the grid graph, turns per-pixel `weights` into per-edge weights with `utils._merge_weights` (sum of the two pixels by default, used as given without rescaling, NaN → 0), and hands off to `unwrap_arbitrary`.
   - `unwrap_arbitrary` picks the solver:
     - `method="ilp"` with simplices: the simplex ILP (`calculate_k`).
     - `method="ilp"` without simplices: the edgelist ILP (`calculate_m`).
     - `method="gc"`: PUMA (`puma`).
-- **`kamui/utils.py`** builds edges and elementary cycles ("simplices") for 2-D and 3-D grids, including cyclical axes, and holds `prepare_weights`. Cycles must traverse each shared edge in opposite directions; `tests/test_utils.py` checks this orientation invariant.
+- **`kamui/utils.py`** builds edges and elementary cycles ("simplices") for 2-D and 3-D grids, including cyclical axes, and holds `prepare_weights`, the public helper from #8 that rescales per-vertex weights to [0.1, 1] before merging (`unwrap_dimensional` no longer uses it; keep its behaviour stable, since external users depend on it). Cycles must traverse each shared edge in opposite directions; `tests/test_utils.py` checks this orientation invariant.
 - **`kamui/core.py`** holds the solvers. `calculate_k` and `calculate_m` each take `solver="auto" | "highs" | "lemon"`. "auto" uses LEMON (the required `pylmcf` package) whenever the program allows it and HiGHS otherwise; "lemon" raises `ValueError` instead of falling back. LEMON needs non-negative integer weights, and kamui never rounds weights itself.
   - `calculate_k` builds the cycle–edge matrix. An entry is +1 if the cycle walks the edge in its stored `(u, v)` direction, −1 otherwise.
     - **LEMON path:** used when every edge lies on at most two cycles. `_dual_graph_arcs` turns the program into a min-cost flow on the dual graph (one node per cycle plus an outside node), and `_solve_min_cost_flow` solves it. `_orient_cycles` first reverses cycles until shared edges run both ways; non-orientable inputs return None and go to HiGHS.

@@ -95,7 +95,16 @@ coherence = np.random.default_rng(0).uniform(0.2, 1.0, wrapped.shape)
 unwrapped = kamui.unwrap_dimensional(wrapped, weights=np.round(coherence * 100))
 ```
 
-`unwrap_arbitrary` takes per-edge weights; `kamui.prepare_weights(weights, edges)` builds them from per-vertex weights. With `solver="lemon"`, fractional weights raise an error instead of falling back to HiGHS.
+With `solver="lemon"`, fractional weights raise an error instead of falling back to HiGHS.
+
+`unwrap_arbitrary` takes per-edge weights and uses them exactly as given. Up to version 0.2, `unwrap_dimensional` rescaled the per-pixel weights linearly to $`[0.1, 1]`$ before merging them. `kamui.prepare_weights` still does that, so pass its result to `unwrap_arbitrary` to keep that behaviour:
+
+```python
+edges, cycles = kamui.get_2d_edges_and_simplices(wrapped.shape)
+edge_weights = kamui.prepare_weights(coherence, edges)  # rescaled, then averaged per edge
+unwrapped = kamui.unwrap_arbitrary(wrapped.ravel(), edges, cycles, weights=edge_weights)
+unwrapped = unwrapped.reshape(wrapped.shape)
+```
 
 ### Cyclical axes
 

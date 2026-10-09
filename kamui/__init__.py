@@ -24,6 +24,7 @@ from scipy.optimize import OptimizeResult
 
 from .core import calculate_k, calculate_m, integrate, puma
 from .utils import (
+    _merge_weights,
     get_2d_edges_and_simplices,
     get_3d_edges_and_simplices,
     prepare_weights,
@@ -93,15 +94,18 @@ def unwrap_dimensional(
         The axis (or axes) treated as cyclical. Defaults to ().
     merging_method : str, optional
         How to combine the weights of an edge's two pixels: "sum", "min",
-        "max" or "mean"; see :func:`kamui.prepare_weights`. Defaults to
+        "max" or "mean". "sum" and "mean" give the same unwrapping, but only
+        "sum", "min" and "max" keep integer weights integer. Defaults to
         "sum".
     weights : np.ndarray, optional
         Non-negative per-pixel weights defining the 'goodness' of each
-        value, shaped like x; NaN marks pixels without a weight. They are
-        used as given, without rescaling. Only the ILP solvers
-        (``method="ilp"``) use weights. Integer weights, such as
-        ``np.round(coherence * 100)``, let LEMON solve the program;
-        fractional ones go to HiGHS. Defaults to None.
+        value, shaped like x; NaN marks pixels without a weight, and edges
+        that touch one get weight 0. They are used as given, without
+        rescaling. Only the ILP solvers (``method="ilp"``) use weights.
+        Integer weights, such as ``np.round(coherence * 100)``, let LEMON
+        solve the program; fractional ones go to HiGHS. For the rescaled
+        weights of :func:`kamui.prepare_weights`, pass its result to
+        :func:`kamui.unwrap_arbitrary` instead. Defaults to None.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -139,7 +143,7 @@ def unwrap_dimensional(
     if weights is not None:
         # convert per-vertex weights to per-edge weights; forward them only
         # when given, since puma (method="gc") takes no weights argument
-        kwargs["weights"] = prepare_weights(weights, edges=edges, merging_method=merging_method)
+        kwargs["weights"] = _merge_weights(weights, edges, merging_method)
     out = unwrap_arbitrary(
         psi,
         edges,
