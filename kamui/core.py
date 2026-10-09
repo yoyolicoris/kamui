@@ -470,7 +470,8 @@ def calculate_m(
     ValueError
         If ``weights`` does not have one entry per edge, ``solver`` is
         unknown, or ``solver="lemon"`` and the weights are not non-negative
-        integers that sum to less than 2**61.
+        integers that sum to less than 2**61, or the absolute differences
+        do not sum to less than 2**61.
     """
     _check_solver(solver)
     if not np.issubdtype(differences.dtype, np.integer):
@@ -480,6 +481,9 @@ def calculate_m(
     w = np.ones((M,), dtype=np.int64) if weights is None else _edge_weights(weights, M)
     if solver != "highs":
         missing = _lemon_rejects(w)
+        # the absolute differences are LEMON's costs, bounded like the weights
+        if missing is None and np.abs(differences.astype(np.float64)).sum() >= 2**61:
+            missing = "differences whose absolute values sum to less than 2**61"
         if solver == "lemon" and missing:
             raise ValueError(f"solver='lemon' needs {missing}")
         if missing is None:

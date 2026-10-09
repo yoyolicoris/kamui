@@ -100,6 +100,18 @@ def test_merge_weights_keeps_integer_weights_integer_without_overflow():
     np.testing.assert_array_equal(out, [300, 103])
 
 
+@pytest.mark.parametrize(
+    ("weights", "expected"),
+    [
+        (np.array([2**62, 2**62], dtype=np.int64), 2.0**63),
+        (np.array([2**63, 2**63 + 5], dtype=np.uint64), 2.0**64),
+    ],
+)
+def test_merge_weights_does_not_wrap_large_integers(weights, expected):
+    out = _merge_weights(weights, np.array([[0, 1]]), "sum")
+    assert out[0] == pytest.approx(expected)
+
+
 @pytest.mark.parametrize("merging_method", ["sum", "min", "max"])
 def test_merge_weights_nan_becomes_zero(merging_method):
     weights = np.array([[np.nan, 1.0], [2.0, 3.0]])

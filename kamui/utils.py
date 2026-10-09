@@ -224,7 +224,14 @@ def _merge_weights(
     merge = {"sum": np.sum, "min": np.min, "max": np.max}.get(merging_method)
     if merge is None:
         raise ValueError(f"merging_method must be 'sum', 'min' or 'max'; got {merging_method!r}")
-    edge_weights = merge(np.asarray(weights).ravel()[edges], axis=1)
+    weights = np.asarray(weights)
+    if np.issubdtype(weights.dtype, np.integer) and (
+        np.max(weights, initial=0) >= 2**62 or np.min(weights, initial=0) < -(2**62)
+    ):
+        # a sum of two such 64-bit integers can wrap; floats cannot, and LEMON
+        # rejects weights this large anyway
+        weights = weights.astype(np.float64)
+    edge_weights = merge(weights.ravel()[edges], axis=1)
     edge_weights[np.isnan(edge_weights)] = 0
     return edge_weights
 

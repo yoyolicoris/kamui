@@ -447,6 +447,21 @@ def test_weights_need_one_entry_per_edge(solver, extra):
         calculate_m(edges, np.array([1, 0, 0]), weights, solver=solver)
 
 
+@pytest.mark.parametrize("first", [2**62, np.iinfo(np.int64).min])
+def test_calculate_m_keeps_huge_differences_from_lemon(first):
+    # |differences| are LEMON's costs: these exceed pylmcf's limit, or wrap
+    # negative under abs
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+    with pytest.raises(ValueError, match="differences whose absolute values"):
+        calculate_m(edges, np.array([first, 0, 0], dtype=np.int64), solver="lemon")
+
+
+def test_calculate_m_leaves_huge_differences_to_highs():
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+    _, info = calculate_m(edges, np.array([2**62, 0, 0], dtype=np.int64), return_info=True)
+    assert info.solver == "highs" and info.success
+
+
 def test_lemon_keeps_large_integer_weights_exact():
     # 2**53 + 1 rounds to 2**53 in float64, which would tie the two cheapest
     # edges; the cheapest edge is 1 only if the weights stay exact
