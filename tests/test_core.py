@@ -207,6 +207,18 @@ def test_cycle_matrix_requires_integer_vertex_indices(as_array, vertex):
         core._cycle_matrix(edges.astype(float), [[0, 1, 2]])
 
 
+@pytest.mark.parametrize("as_array", [False, True])
+def test_cycle_matrix_rejects_negative_vertex_indices(as_array):
+    # -1 padding a short cycle: (2, -1) and (1, -1) have the codes of edges
+    # (1, 3) and (0, 3), so without the check this cycle was silently accepted
+    edges = np.array([[0, 3], [1, 2], [1, 3]])
+    simplices = np.array([[1, 2, -1]]) if as_array else [[1, 2, -1]]
+    with pytest.raises(ValueError, match="simplices must hold non-negative vertex indices"):
+        core._cycle_matrix(edges, simplices)
+    with pytest.raises(ValueError, match="edges must hold non-negative vertex indices"):
+        core._cycle_matrix(-edges, [[0, 1, 2]])
+
+
 def test_cycle_matrix_accepts_numpy_integer_vertices_in_lists():
     edges, simplices = _triangle()
     rows = [np.array(s, dtype=np.int32) for s in simplices]

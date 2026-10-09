@@ -229,10 +229,17 @@ def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> n
 
 
 def _vertex_indices(values: np.ndarray, name: str) -> np.ndarray:
-    """Return values as int64, raising TypeError unless they have an integer dtype."""
+    """Return values as int64, raising unless they are non-negative integers.
+
+    The edge code ``u * n + v`` is unique only for vertices in ``[0, n)``: a
+    negative one, such as -1 padding a short cycle, could alias a real edge.
+    """
     if not np.issubdtype(values.dtype, np.integer):
         raise TypeError(f"{name} must hold integer vertex indices; got {values.dtype}")
-    return values.astype(np.int64, copy=False)
+    values = values.astype(np.int64, copy=False)
+    if np.min(values, initial=0) < 0:
+        raise ValueError(f"{name} must hold non-negative vertex indices")
+    return values
 
 
 def _cycle_steps(simplices: Iterable[Iterable[int]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -252,6 +259,7 @@ def _cycle_steps(simplices: Iterable[Iterable[int]]) -> tuple[np.ndarray, np.nda
         heads = np.fromiter(vertices, dtype=np.int64, count=int(lengths.sum()))
     except TypeError as err:
         raise TypeError(f"simplices must hold integer vertex indices: {err}") from None
+    heads = _vertex_indices(heads, "simplices")
     ends = np.cumsum(lengths)
     closed = lengths > 0
     previous = np.arange(-1, heads.size - 1)
@@ -419,7 +427,8 @@ def calculate_k(
     TypeError
         If ``edges`` or ``simplices`` do not hold integer vertex indices.
     ValueError
-        If the edges are not unique, the simplices use an edge not in
+        If the edges are not unique, a vertex index is negative, the
+        simplices use an edge not in
         ``edges``, ``weights`` does not have one entry per edge, ``solver``
         is unknown, or ``solver="lemon"`` and the
         weights are not non-negative integers that sum to less than 2**61,
