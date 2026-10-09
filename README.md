@@ -214,18 +214,19 @@ Kamui expects a single connected graph with finite phase values. NaNs, or region
 
 ## Performance and memory
 
-`unwrap_dimensional` with default settings on noisy 2-D grids, measured on an Apple M1 Pro with SciPy 1.18 (HiGHS 1.12) and pylmcf 1.3.0:
+`unwrap_dimensional` with default settings on noisy 2-D grids, measured on an Apple M1 Pro with SciPy 1.18 (HiGHS 1.12) and pylmcf 1.3.0. Memory is the peak footprint, which includes compressed memory:
 
 | Grid | HiGHS | LEMON |
 | --- | --- | --- |
-| 300×300 | 1.6 s, 0.7 GB | 0.32 s, 0.2 GB |
-| 600×600 | 9.7 s, 1.6 GB | 1.6 s, 0.8 GB |
-| 1000×1000 | 55 s, 2.3 GB | 4.8 s, 2.1 GB |
-| 2000×2000 | — | 26 s, 2.6 GB |
+| 300×300 | 1.4 s, 0.3 GB | 0.09 s, 0.1 GB |
+| 600×600 | 9.5 s, 1.3 GB | 0.52 s, 0.2 GB |
+| 1000×1000 | 53 s, 3.6 GB | 1.7 s, 0.6 GB |
+| 2000×2000 | — | 11 s, 3.2 GB |
+| 4628×2562 | — | 49 s, 9.6 GB |
 
-The edgelist path (`use_edgelist=True`) and grids with integer weights gain 3–4× from LEMON: at 600×600, from 78 s to 18 s and from 14 s to 4.3 s.
+Both solvers reach the same optimal cost. The last row is the size of the interferograms in [#11](https://github.com/yoyolicoris/kamui/issues/11) and [#12](https://github.com/yoyolicoris/kamui/issues/12). LEMON's own solve takes most of the time and about half of the memory there.
 
-Both solvers reach the same optimal cost. With LEMON, the solve is no longer the bottleneck: on large grids, most of the time and memory go into Kamui's own Python code that builds the program, which [#24](https://github.com/yoyolicoris/kamui/issues/24) addresses. Scenes such as the 4628×2562 interferograms in [#11](https://github.com/yoyolicoris/kamui/issues/11) and [#12](https://github.com/yoyolicoris/kamui/issues/12) still need tens of GB of memory.
+The edgelist path (`use_edgelist=True`) and grids with integer weights also gain from LEMON: at 600×600, from 78 s to 18 s and from 12 s to 2.3 s.
 
 If unwrapping is unexpectedly slow, check your SciPy build. On macOS (Apple Silicon), conda-forge's SciPy 1.15.0–1.15.2 builds solve kamui's programs hundreds of times slower than SciPy's PyPI wheels and other conda-forge releases, for example 5 s instead of 10 ms for a 32×32 grid.
 
@@ -236,7 +237,7 @@ If unwrapping is unexpectedly slow, check your SciPy build. On macOS (Apple Sili
 ## Roadmap
 
 - [ ] Missing data and disconnected graphs ([#23](https://github.com/yoyolicoris/kamui/issues/23))
-- [ ] Lower memory use on large scenes ([#24](https://github.com/yoyolicoris/kamui/issues/24))
+- [x] Lower memory use on large scenes ([#24](https://github.com/yoyolicoris/kamui/issues/24))
 - [x] A min-cost-flow solver for 2-D and planar data ([#25](https://github.com/yoyolicoris/kamui/issues/25))
 - [ ] Faster PUMA ([#26](https://github.com/yoyolicoris/kamui/issues/26))
 - [ ] A conda-forge package ([#13](https://github.com/yoyolicoris/kamui/issues/13))
