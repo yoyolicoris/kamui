@@ -64,6 +64,8 @@ def _lemon_takes(w: np.ndarray, solver: str) -> bool:
     numbers. Weights must also stay below 2**62, pylmcf's cost limit, which
     also keeps `calculate_m`'s capacities of twice the weight within int64.
     """
+    if solver == "highs":
+        return False
     integer = np.issubdtype(w.dtype, np.integer) or (
         np.isfinite(w).all() and np.array_equal(w, np.round(w))
     )
@@ -78,7 +80,7 @@ def _lemon_takes(w: np.ndarray, solver: str) -> bool:
         raise ValueError("solver='lemon' needs non-negative weights")
     if solver == "lemon" and not in_range:
         raise ValueError("solver='lemon' needs weights below 2**62")
-    return solver != "highs" and integer and non_negative and in_range
+    return integer and non_negative and in_range
 
 
 def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np.ndarray | None:
@@ -93,8 +95,8 @@ def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np
     """
     if not same.any():  # already consistent, as kamui's own grids are
         return np.zeros(N, dtype=bool)
-    pairs = np.column_stack((np.minimum(a, b), np.maximum(a, b)))
-    pairs, first = np.unique(pairs, axis=0, return_index=True)
+    key, first = np.unique(np.minimum(a, b) * N + np.maximum(a, b), return_index=True)
+    pairs = np.column_stack(np.divmod(key, N))
     parity = same[first].astype(np.int64)
     adjacency = sp.csr_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(N, N))
     _, label = csg.connected_components(adjacency, directed=False)
@@ -133,10 +135,11 @@ def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray, np.ndarr
     edge = np.flatnonzero(count > 0)
     first = V.indptr[edge]
     r1, s1 = V.indices[first].astype(np.int64), V.data[first]
-    r2, s2 = np.full(edge.size, N, dtype=np.int64), -s1
     two = count[edge] == 2
-    r2[two], s2[two] = V.indices[first[two] + 1], V.data[first[two] + 1]
-    reverse = _orient_cycles(N, r1[two], r2[two], s1[two] == s2[two])
+    second = first[two] + 1
+    r2 = np.full(edge.size, N, dtype=np.int64)
+    r2[two] = V.indices[second]
+    reverse = _orient_cycles(N, r1[two], r2[two], s1[two] == V.data[second])
     if reverse is None:
         return None
     forwards = (s1 > 0) != reverse[r1]
@@ -145,6 +148,14 @@ def _dual_graph_arcs(V: sp.csr_matrix) -> tuple[np.ndarray, np.ndarray, np.ndarr
     tail[edge] = np.where(forwards, r1, r2)
     head[edge] = np.where(forwards, r2, r1)
     return tail, head, reverse
+
+
+def _sorted_graph(
+    n_nodes: int, starts: np.ndarray, ends: np.ndarray
+) -> tuple[pylmcf.Graph, np.ndarray]:
+    """Return a pylmcf graph of the arcs, which it needs sorted by (start, end), and that order."""
+    order = np.argsort(starts * n_nodes + ends, kind="stable")
+    return pylmcf.Graph(n_nodes, edge_starts=starts[order], edge_ends=ends[order]), order
 
 
 def _solve_min_cost_flow(
@@ -164,9 +175,8 @@ def _solve_min_cost_flow(
     cost = w[edge].astype(np.int64)
     starts = np.concatenate((tail[edge], head[edge]))
     ends = np.concatenate((head[edge], tail[edge]))
-    order = np.lexsort((ends, starts))  # pylmcf wants arcs sorted by (start, end)
     supply = np.append(b, -b.sum()).astype(np.int64)
-    graph = pylmcf.Graph(len(supply), edge_starts=starts[order], edge_ends=ends[order])
+    graph, order = _sorted_graph(supply.size, starts, ends)
     graph.set_node_supply(supply)
     graph.set_edge_costs(np.tile(cost, 2)[order])
     # an optimal flow never carries more than the total supply on any arc
@@ -202,8 +212,7 @@ def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> n
     supply = np.zeros(int(edges.max()) + 1, dtype=np.int64)
     np.add.at(supply, v, fixed)
     np.add.at(supply, u, -fixed)
-    order = np.lexsort((ends, starts))  # pylmcf wants arcs sorted by (start, end)
-    graph = pylmcf.Graph(supply.size, edge_starts=starts[order], edge_ends=ends[order])
+    graph, order = _sorted_graph(supply.size, starts, ends)
     graph.set_node_supply(supply)
     graph.set_edge_costs(np.abs(d)[order])
     graph.set_edge_capacities(2 * w[order])
@@ -357,26 +366,15 @@ def calculate_k(
     vals = np.array(vals)
 
     V = sp.csr_matrix((vals, (rows, cols)), shape=(N, M))
-    y = V @ differences
-    y = np.round(y).astype(np.int64)
-
-    A_eq = sp.csr_matrix(
-        (
-            np.concatenate((vals, -vals)),
-            (np.tile(rows, 2), np.concatenate((cols, cols + M))),
-        ),
-        shape=(N, M * 2),
-    )
-    b_eq = -y
+    b_eq = -np.round(V @ differences).astype(np.int64)
 
     if weights is None:
         # each edge costs the number of its cycles that have no residue
-        W = np.abs(A_eq)
-        c = W.sum(0).A1 - np.minimum(np.abs(b_eq), 1) @ W
+        W = np.abs(V)
+        w = W.sum(0).A1 - np.minimum(np.abs(b_eq), 1) @ W
     else:
-        c = np.tile(weights, 2)
+        w = np.asarray(weights)
 
-    w = np.asarray(c[:M])
     arcs = _dual_graph_arcs(V) if _lemon_takes(w, solver) else None
     if solver == "lemon" and arcs is None:
         raise ValueError(
@@ -399,7 +397,9 @@ def calculate_k(
         info.update(ilp_fallback=False, solver="lemon")
         return (k, info) if return_info else k
 
-    x, info = _solve_integer_program(c, A_eq, b_eq)
+    # k = x[:M] - x[M:] with x >= 0, so that the cost w @ |k| is linear
+    A_eq = sp.hstack((V, -V), format="csr")
+    x, info = _solve_integer_program(np.tile(w, 2), A_eq, b_eq)
     k = None if x is None else (x[:M] - x[M:]).astype(np.int64)
     return (k, info) if return_info else k
 
