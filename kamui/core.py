@@ -1,6 +1,6 @@
 """Solvers for the phase unwrapping integer programs.
 
-:func:`integrate` walks a directed graph accumulating edge weights,
+:func:`integrate` sums edge differences along a spanning tree,
 :func:`calculate_k` and :func:`calculate_m` solve the two ILP formulations
 as min-cost flows with LEMON where they can and with HiGHS otherwise, and
 :func:`puma` runs the graph-cut PUMA algorithm when PyMaxflow is installed.
@@ -107,8 +107,8 @@ def _orient_cycles(N: int, a: np.ndarray, b: np.ndarray, same: np.ndarray) -> np
     _, roots = np.unique(label, return_index=True)
     links = np.column_stack((np.full_like(roots, N), roots))
     flips = integrate(
-        np.concatenate((pairs, pairs[:, ::-1], links)),
-        np.concatenate((parity, parity, np.zeros(roots.size, dtype=np.int64))),
+        np.concatenate((pairs, links)),
+        np.concatenate((parity, np.zeros(roots.size, dtype=np.int64))),
         start_i=N,
     )
     reverse = flips[:N] % 2 == 1
@@ -313,37 +313,42 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
 
 
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
-    """Integrate edge weights along the breadth-first spanning tree of a directed graph.
+    """Integrate edge differences along a breadth-first spanning tree.
 
     Parameters
     ----------
     edges : (N, 2) np.ndarray
-        Directed edges as (source, target) index pairs.
+        Edges as (u, v) index pairs. Each edge is also walked from v to u,
+        with its difference negated, so give every edge once: listing both
+        (u, v) and (v, u) doubles their differences.
     weights : (N,) np.ndarray
-        Weight of each edge.
+        Difference along each edge, from u to v.
     start_i : int, optional
         Index of the node the traversal starts from. Defaults to 0.
 
     Returns
     -------
     (V,) np.ndarray
-        Sum of the edge weights on the tree path from ``start_i`` to each of
-        the V nodes; unreachable nodes keep 0.
+        Sum of the differences on the tree path from ``start_i`` to each of
+        the V nodes; nodes not connected to ``start_i`` keep 0.
     """
     N = int(edges.max()) + 1
     G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])), shape=(N, N))
     # Any spanning tree gives the same sums when the weights are consistent
     # around every cycle; a breadth-first tree is shallow, which keeps the
     # pointer jumping below to few passes.
-    order, parent = csg.breadth_first_order(G, start_i, directed=True, return_predecessors=True)
+    order, parent = csg.breadth_first_order(G, start_i, directed=False, return_predecessors=True)
 
-    # Start from the weight of the tree edge into each reached node. Each node
-    # must build on its parent, not on the node visited just before it: two
-    # consecutive nodes in visit order often share no edge.
+    # Start from the difference along the tree edge into each reached node:
+    # G holds it at (parent, node) or, negated, at (node, parent), and the
+    # other entry reads 0. Each node must build on its parent, not on the
+    # node visited just before it: two consecutive nodes in visit order often
+    # share no edge.
     result = np.zeros(N, dtype=weights.dtype)
     children = order[1:]
     if children.size:
-        result[children] = np.asarray(G[parent[children], children]).ravel()
+        up = parent[children]
+        result[children] = np.asarray(G[up, children] - G[children, up]).ravel()
 
     # Pointer jumping: each pass adds the partial sum held by a node's current
     # ancestor and then skips to that ancestor's ancestor, so a tree of depth

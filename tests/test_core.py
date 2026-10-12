@@ -17,11 +17,16 @@ def _failed_solve(x, status=2, message="The problem is infeasible."):
 
 
 def test_integrate_chain():
-    # integrate is called with edges in both directions (as in
-    # unwrap_arbitrary), so every vertex appears as a source
-    edges = np.array([[0, 1], [1, 2], [2, 3], [1, 0], [2, 1], [3, 2]])
-    weights = np.array([1.0, 2.0, 4.0, -1.0, -2.0, -4.0])
+    edges = np.array([[0, 1], [1, 2], [2, 3]])
+    weights = np.array([1.0, 2.0, 4.0])
     np.testing.assert_allclose(integrate(edges, weights), [0.0, 1.0, 3.0, 7.0])
+
+
+def test_integrate_walks_edges_backwards_negated():
+    # edges stored against the walk from the start contribute -weight
+    edges = np.array([[1, 0], [1, 2], [3, 2]])
+    weights = np.array([2.0, 3.0, 4.0])
+    np.testing.assert_allclose(integrate(edges, weights), [0.0, -2.0, 1.0, -3.0])
 
 
 def test_integrate_sums_along_tree_paths():
@@ -30,14 +35,11 @@ def test_integrate_sums_along_tree_paths():
     # node must be accumulated from its own parent.
     edges = np.array([[0, 1], [1, 2], [0, 3], [3, 4]])
     weights = np.array([1.0, 2.0, 4.0, 8.0])
-    both = np.concatenate((edges, np.flip(edges, 1)))
-    result = integrate(both, np.concatenate((weights, -weights)))
-    np.testing.assert_allclose(result, [0.0, 1.0, 3.0, 4.0, 12.0])
+    np.testing.assert_allclose(integrate(edges, weights), [0.0, 1.0, 3.0, 4.0, 12.0])
 
 
-def test_integrate_leaves_unreachable_nodes_at_zero():
-    # the only edge points into the start node, so nothing else is reached
-    np.testing.assert_array_equal(integrate(np.array([[1, 0]]), np.array([5.0])), [0.0, 0.0])
+def test_integrate_leaves_unconnected_nodes_at_zero():
+    np.testing.assert_array_equal(integrate(np.array([[1, 2]]), np.array([5.0])), [0.0, 0.0, 0.0])
 
 
 def _triangle():

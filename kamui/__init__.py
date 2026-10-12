@@ -257,13 +257,13 @@ def unwrap_arbitrary(
                 result = None
             else:
                 correct_diff = diff + k * period
-                # A virtual vertex n joins every root by a zero edge, so one
-                # traversal from it covers all components.
+                # A virtual vertex n joins every root by a zero-weight edge,
+                # so one traversal from it covers all components.
                 links = np.stack((np.full_like(roots, n), roots), axis=1)
                 result = (
                     integrate(
-                        np.concatenate((edges, np.flip(edges, 1), links), axis=0),
-                        np.concatenate((correct_diff, -correct_diff, np.zeros(len(roots)))),
+                        np.concatenate((edges, links), axis=0),
+                        np.concatenate((correct_diff, np.zeros(len(roots)))),
                         start_i=n,
                     )[:n]
                     + psi[ref]
