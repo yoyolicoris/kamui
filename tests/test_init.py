@@ -119,6 +119,14 @@ def test_unwrap_dimensional_gc():
     np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
 
 
+def test_unwrap_dimensional_gc_weights():
+    true = _ramp_2d()
+    weights = np.ones_like(true)
+    result = unwrap_dimensional(wrap_difference(true), method="gc", weights=weights)
+    assert result is not None
+    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+
+
 def test_unwrap_dimensional_3d_ramp_on_larger_grid():
     # 10x10x10 is large enough for consecutive voxels in the traversal order
     # not to be adjacent, which broke integrate before #22

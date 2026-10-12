@@ -619,7 +619,7 @@ def test_puma_accepts_energy_decrease():
     psi = np.array([0.0, -0.4, 0.3, -0.2])
     edges = np.array([[0, 1], [1, 2], [2, 3]])
     k = puma(psi, edges, max_jump=1)
-    np.testing.assert_array_equal(k, [1.0, 1.0, 0.0, 1.0])
+    np.testing.assert_array_equal(k, [1.0, 1.0, 0.0, 0.0])
     i, j = edges[:, 0], edges[:, 1]
     before = np.sum(np.abs(psi[j] - psi[i]))
     after = np.sum(np.abs(k[j] - k[i] - psi[i] + psi[j]))
@@ -633,6 +633,37 @@ def test_puma_reports_final_energy():
     i, j = edges[:, 0], edges[:, 1]
     assert info.fun == pytest.approx(np.sum(np.abs(k[j] - k[i] - psi[i] + psi[j])))
     assert info.success and info.nit >= 2
+
+
+def test_puma_accepts_weights():
+    psi = np.array([0.0, -0.4, 0.3, -0.2])
+    edges = np.array([[0, 1], [1, 2], [2, 3]])
+    weights = np.array([2.0, 0.5, 1.0])
+    k, info = puma(psi, edges, weights=weights, return_info=True)
+    i, j = edges[:, 0], edges[:, 1]
+    expected_energy = np.sum(weights * np.abs(k[j] - k[i] - psi[i] + psi[j]))
+    assert info.fun == pytest.approx(expected_energy)
+
+
+def test_puma_rejects_negative_weights():
+    psi = np.array([0.0, 0.5])
+    edges = np.array([[0, 1]])
+    with pytest.raises(ValueError, match="non-negative"):
+        puma(psi, edges, weights=np.array([-1.0]))
+
+
+def test_puma_rejects_bad_weights_shape():
+    psi = np.array([0.0, 0.5])
+    edges = np.array([[0, 1]])
+    with pytest.raises(ValueError, match="one entry per edge"):
+        puma(psi, edges, weights=np.array([1.0, 2.0]))
+
+
+def test_puma_rejects_nonpositive_max_jump():
+    psi = np.array([0.0, 0.5])
+    edges = np.array([[0, 1]])
+    with pytest.raises(ValueError, match="at least 1"):
+        puma(psi, edges, max_jump=0)
 
 
 def test_puma_requires_pymaxflow(monkeypatch):
