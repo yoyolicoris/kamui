@@ -303,32 +303,109 @@ def unwrap_arbitrary(
         raise IndexError(f"start_i {start_i} is out of bounds for {P} vertices")
 
     if len(edges) == 0:
-        ref_nodes = np.arange(P)
-        ref_for_vertex = np.arange(P)
-    else:
-        adj = sp.coo_matrix(
-            (np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])),
-            shape=(P, P),
+        res = psi.astype(np.float64)
+        info = OptimizeResult(
+            fun=0.0,
+            success=True,
+            status=0,
+            message="No edges to unwrap.",
+            ilp_fallback=False,
+            solver="none",
         )
-        n_components, labels = csg.connected_components(adj, directed=False)
-        _, first_indices = np.unique(labels, return_index=True)
-        ref_nodes = first_indices.copy()
-        ref_nodes[labels[start_i]] = start_i
-        ref_for_vertex = ref_nodes[labels]
+        return (res, info) if return_info else res
+
+    adj = sp.coo_matrix(
+        (np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])),
+        shape=(P, P),
+    )
+    n_components, labels = csg.connected_components(adj, directed=False)
+
+    if n_components > 1:
+        result = np.zeros(P, dtype=np.float64)
+        total_fun = 0.0
+        solvers_used = set()
+        any_fallback = False
+        total_nit = 0
+        weights = kwargs.get("weights")
+
+        for c in range(n_components):
+            nodes_c = np.flatnonzero(labels == c)
+            if len(nodes_c) == 1:
+                result[nodes_c[0]] = psi[nodes_c[0]]
+                continue
+
+            v_map = np.full(P, -1, dtype=np.int64)
+            v_map[nodes_c] = np.arange(len(nodes_c))
+            edge_mask = labels[edges[:, 0]] == c
+            sub_edges = v_map[edges[edge_mask]]
+            sub_psi = psi[nodes_c]
+
+            sub_simplices = None
+            if simplices is not None:
+                if len(simplices) == 0:
+                    sub_simplices = simplices
+                elif isinstance(simplices, np.ndarray) and simplices.ndim == 2:
+                    cycle_mask = labels[simplices[:, 0]] == c
+                    sub_simplices = v_map[simplices[cycle_mask]]
+                else:
+                    sub_simplices = [
+                        v_map[np.asarray(cyc)] for cyc in simplices if labels[cyc[0]] == c
+                    ]
+
+            sub_kwargs = kwargs.copy()
+            if weights is not None:
+                sub_kwargs["weights"] = weights[edge_mask]
+
+            sub_start_i = int(v_map[start_i]) if labels[start_i] == c else 0
+            out = unwrap_arbitrary(
+                sub_psi,
+                sub_edges,
+                sub_simplices,
+                method=method,
+                period=period,
+                start_i=sub_start_i,
+                return_info=return_info,
+                **sub_kwargs,
+            )
+            sub_res, sub_info = out if return_info else (out, None)
+            if sub_res is None:
+                return (None, sub_info) if return_info else None
+            result[nodes_c] = sub_res
+            if return_info:
+                total_fun += float(sub_info.fun)
+                if method == "gc":
+                    total_nit += int(sub_info.nit)
+                else:
+                    solvers_used.add(sub_info.solver)
+                    any_fallback |= bool(sub_info.ilp_fallback)
+
+        if return_info:
+            info_dict: dict[str, Any] = {
+                "fun": total_fun,
+                "success": True,
+                "status": 0,
+                "message": "Optimal solution found across components.",
+            }
+            if method == "gc":
+                info_dict["nit"] = total_nit
+            else:
+                info_dict["solver"] = "+".join(sorted(solvers_used))
+                info_dict["ilp_fallback"] = any_fallback
+            return result, OptimizeResult(**info_dict)
+        return result
 
     if method == "gc":
         m, info = puma(psi / period, edges, return_info=True, **kwargs)
-        result = (m - m[ref_for_vertex]) * period + psi
+        result = (m - m[start_i]) * period + psi
     else:  # method == "ilp"
         if simplices is None:
             m, info = calculate_m(
                 edges,
                 np.round((psi[edges[:, 1]] - psi[edges[:, 0]]) / period).astype(np.int64),
                 return_info=True,
-                n_nodes=P,
                 **kwargs,
             )
-            result = None if m is None else (m - m[ref_for_vertex]) * period + psi
+            result = None if m is None else (m - m[start_i]) * period + psi
         else:
             diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
             k, info = calculate_k(edges, simplices, diff / period, return_info=True, **kwargs)
@@ -340,9 +417,8 @@ def unwrap_arbitrary(
                     integrate(
                         np.concatenate((edges, np.flip(edges, 1)), axis=0),
                         np.concatenate((correct_diff, -correct_diff), axis=0),
-                        start_i=ref_nodes,
-                        n_nodes=P,
+                        start_i=start_i,
                     )
-                    + psi[ref_for_vertex]
+                    + psi[start_i]
                 )
     return (result, info) if return_info else result

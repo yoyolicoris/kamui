@@ -303,35 +303,100 @@ def test_unwrap_arbitrary_rejects_bad_method():
 
 @pytest.mark.parametrize("method", ["ilp", "gc"])
 def test_unwrap_arbitrary_disconnected_components(method):
-    true_phase = np.r_[np.arange(5) * 2.0, 50 + np.arange(5) * 2.0]
+    true_phase = np.r_[np.arange(5) * 2.0, 50 + np.arange(5) * 2.0, 99.0]
     psi = wrap_difference(true_phase)
+    # 0..4 connected, 5..9 connected, node 10 is isolated
     edges = np.array([[0, 1], [1, 2], [2, 3], [3, 4], [5, 6], [6, 7], [7, 8], [8, 9]])
+    weights = np.ones(len(edges), dtype=np.float64 if method == "gc" else np.int64)
 
     # simplex path (for ILP) and default GC
     simplices = [] if method == "ilp" else None
-    res = unwrap_arbitrary(psi, edges, simplices=simplices, method=method, start_i=0)
+    res, info = unwrap_arbitrary(
+        psi, edges, simplices=simplices, method=method, weights=weights, start_i=0, return_info=True
+    )
     assert res is not None
+    assert info.success
     np.testing.assert_allclose(np.diff(res[:5]), 2.0, atol=1e-9)
-    np.testing.assert_allclose(np.diff(res[5:]), 2.0, atol=1e-9)
+    np.testing.assert_allclose(np.diff(res[5:10]), 2.0, atol=1e-9)
     np.testing.assert_allclose(res[0], psi[0], atol=1e-9)
     np.testing.assert_allclose(res[5], psi[5], atol=1e-9)
+    np.testing.assert_allclose(res[10], psi[10], atol=1e-9)
 
     # edgelist path (for ILP)
     if method == "ilp":
-        res_m = unwrap_arbitrary(psi, edges, simplices=None, method="ilp", start_i=0)
+        res_m, info_m = unwrap_arbitrary(
+            psi, edges, simplices=None, method="ilp", start_i=0, return_info=True
+        )
         assert res_m is not None
+        assert info_m.success and info_m.solver == "lemon"
         np.testing.assert_allclose(np.diff(res_m[:5]), 2.0, atol=1e-9)
-        np.testing.assert_allclose(np.diff(res_m[5:]), 2.0, atol=1e-9)
+        np.testing.assert_allclose(np.diff(res_m[5:10]), 2.0, atol=1e-9)
         np.testing.assert_allclose(res_m[0], psi[0], atol=1e-9)
         np.testing.assert_allclose(res_m[5], psi[5], atol=1e-9)
+        np.testing.assert_allclose(res_m[10], psi[10], atol=1e-9)
 
     # start_i in the second component (start_i=7)
     res_start7 = unwrap_arbitrary(psi, edges, simplices=simplices, method=method, start_i=7)
     assert res_start7 is not None
     np.testing.assert_allclose(np.diff(res_start7[:5]), 2.0, atol=1e-9)
-    np.testing.assert_allclose(np.diff(res_start7[5:]), 2.0, atol=1e-9)
+    np.testing.assert_allclose(np.diff(res_start7[5:10]), 2.0, atol=1e-9)
     np.testing.assert_allclose(res_start7[0], psi[0], atol=1e-9)
     np.testing.assert_allclose(res_start7[7], psi[7], atol=1e-9)
+    np.testing.assert_allclose(res_start7[10], psi[10], atol=1e-9)
+
+
+def test_unwrap_arbitrary_disconnected_simplices_2d_and_list():
+    true_phase = np.array([0.0, 1.0, 0.5, 5.0, 6.0, 5.5])
+    psi = wrap_difference(true_phase)
+    edges = np.array([[0, 1], [1, 2], [2, 0], [3, 4], [4, 5], [5, 3]])
+    simplices_2d = np.array([[0, 1, 2], [3, 4, 5]])
+    simplices_list = [[0, 1, 2], [3, 4, 5]]
+
+    res_2d, info_2d = unwrap_arbitrary(psi, edges, simplices=simplices_2d, return_info=True)
+    assert res_2d is not None and info_2d.success
+    np.testing.assert_allclose(res_2d[:3] - res_2d[0], true_phase[:3] - true_phase[0], atol=1e-9)
+    np.testing.assert_allclose(res_2d[3:] - res_2d[3], true_phase[3:] - true_phase[3], atol=1e-9)
+
+    res_list, info_list = unwrap_arbitrary(psi, edges, simplices=simplices_list, return_info=True)
+    assert res_list is not None and info_list.success
+    np.testing.assert_allclose(res_list, res_2d, atol=1e-9)
+
+
+def test_unwrap_arbitrary_disconnected_ilp_fallback():
+    c1_edges = np.array([[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]])
+    c1_psi = np.array([0.0, 0.49, -0.49, 0.0]) * (2 * np.pi)
+    c1_weights = np.array([1.0, 10.0, 10.0, 10.0, 10.0, 1.0])
+    c1_simplices = [[0, 1, 2, 3], [0, 1, 3, 2]]
+
+    c2_edges = np.array([[4, 5]])
+    c2_psi = np.array([0.0, 1.0])
+    c2_weights = np.array([2.0])
+
+    edges = np.vstack([c1_edges, c2_edges])
+    psi = np.concatenate([c1_psi, c2_psi])
+    weights = np.concatenate([c1_weights, c2_weights])
+    simplices = c1_simplices
+
+    res, info = unwrap_arbitrary(psi, edges, simplices=simplices, weights=weights, return_info=True)
+    assert res is not None
+    assert info.success
+    assert info.ilp_fallback
+    assert "highs" in info.solver
+
+
+def test_unwrap_arbitrary_disconnected_subproblem_failure(monkeypatch):
+    edges = np.array([[0, 1], [2, 3]])
+    psi = np.zeros(4)
+
+    monkeypatch.setattr(
+        kamui,
+        "calculate_m",
+        lambda *a, **k: (None, OptimizeResult(success=False)) if k.get("return_info") else None,
+    )
+    assert unwrap_arbitrary(psi, edges, return_info=False) is None
+    res, info = unwrap_arbitrary(psi, edges, return_info=True)
+    assert res is None
+    assert not info.success
 
 
 def test_unwrap_arbitrary_empty_inputs():

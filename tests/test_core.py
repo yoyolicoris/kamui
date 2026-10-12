@@ -40,35 +40,6 @@ def test_integrate_leaves_unreachable_nodes_at_zero():
     np.testing.assert_array_equal(integrate(np.array([[1, 0]]), np.array([5.0])), [0.0, 0.0])
 
 
-def test_integrate_multiple_starts():
-    edges = np.array([[0, 1], [1, 2], [5, 6], [6, 7]])
-    both = np.concatenate((edges, np.flip(edges, 1)))
-    weights = np.array([1.0, 2.0, 3.0, 4.0])
-    both_w = np.concatenate((weights, -weights))
-    res = integrate(both, both_w, start_i=[0, 5], n_nodes=8)
-    np.testing.assert_allclose(res, [0.0, 1.0, 3.0, 0.0, 0.0, 0.0, 3.0, 7.0])
-
-    # isolated starts without children
-    res_isolated = integrate(np.array([[2, 3]]), np.array([1.0]), start_i=[0, 1], n_nodes=4)
-    np.testing.assert_allclose(res_isolated, [0.0, 0.0, 0.0, 0.0])
-
-
-def test_integrate_empty_edges():
-    empty_edges = np.empty((0, 2), dtype=np.int64)
-    empty_weights = np.empty(0, dtype=np.float64)
-    np.testing.assert_array_equal(integrate(empty_edges, empty_weights), np.empty(0))
-    np.testing.assert_array_equal(integrate(empty_edges, empty_weights, n_nodes=3), np.zeros(3))
-
-
-def test_integrate_redundant_starts():
-    edges = np.array([[0, 1], [1, 2], [2, 3]])
-    both = np.concatenate((edges, np.flip(edges, 1)))
-    weights = np.array([1.0, 2.0, 3.0])
-    both_w = np.concatenate((weights, -weights))
-    res = integrate(both, both_w, start_i=[0, 1])
-    np.testing.assert_allclose(res, [0.0, 1.0, 3.0, 6.0])
-
-
 def _triangle():
     edges = np.array([[0, 1], [1, 2], [2, 0]])
     simplices = [[0, 1, 2]]
@@ -474,25 +445,6 @@ def test_calculate_m_accepts_any_integer_dtype():
     edges = np.array([[0, 1], [1, 2]])
     differences = np.array([1, -1], dtype=np.int32)
     m = calculate_m(edges, differences)
-    np.testing.assert_array_equal(m[edges[:, 0]] - m[edges[:, 1]], differences)
-
-
-@pytest.mark.parametrize("solver", ["auto", "lemon", "highs"])
-def test_calculate_m_empty_edges(solver):
-    empty_edges = np.empty((0, 2), dtype=np.int64)
-    empty_diff = np.empty(0, dtype=np.int64)
-    m, info = calculate_m(empty_edges, empty_diff, solver=solver, return_info=True, n_nodes=3)
-    assert m.shape == (3,)
-    np.testing.assert_array_equal(m, np.zeros(3, dtype=np.int64))
-    assert info.success and info.fun == 0.0
-
-
-@pytest.mark.parametrize("solver", ["lemon", "highs"])
-def test_calculate_m_n_nodes(solver):
-    edges = np.array([[0, 1], [1, 2]])
-    differences = np.array([1, -1], dtype=np.int64)
-    m = calculate_m(edges, differences, solver=solver, n_nodes=5)
-    assert m.shape == (5,)
     np.testing.assert_array_equal(m[edges[:, 0]] - m[edges[:, 1]], differences)
 
 

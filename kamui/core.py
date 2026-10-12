@@ -197,9 +197,7 @@ def _solve_min_cost_flow(
     return k
 
 
-def _solve_offsets_by_flow(
-    edges: np.ndarray, d: np.ndarray, w: np.ndarray, n_nodes: int | None = None
-) -> np.ndarray:
+def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> np.ndarray:
     """Solve ``min sum(w * |m[v] - m[u] + d|)`` with LEMON, reading m off as node potentials.
 
     The LP dual of this program is a circulation: a flow ``y[e]`` in
@@ -219,8 +217,7 @@ def _solve_offsets_by_flow(
     up = d >= 0
     starts, ends = np.where(up, v, u), np.where(up, u, v)
     fixed = np.where(up, w, -w)
-    N = n_nodes if n_nodes is not None else int(edges.max()) + 1
-    supply = np.zeros(N, dtype=np.int64)
+    supply = np.zeros(int(edges.max()) + 1, dtype=np.int64)
     np.add.at(supply, v, fixed)
     np.add.at(supply, u, -fixed)
     graph, order = _sorted_graph(supply.size, starts, ends)
@@ -315,14 +312,8 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
     return V
 
 
-def integrate(
-    edges: np.ndarray,
-    weights: np.ndarray,
-    start_i: int | Iterable[int] = 0,
-    *,
-    n_nodes: int | None = None,
-) -> np.ndarray:
-    """Integrate edge weights along breadth-first spanning trees of a directed graph.
+def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
+    """Integrate edge weights along the breadth-first spanning tree of a directed graph.
 
     Parameters
     ----------
@@ -330,55 +321,29 @@ def integrate(
         Directed edges as (source, target) index pairs.
     weights : (N,) np.ndarray
         Weight of each edge.
-    start_i : int or iterable of int, optional
-        Index of the node (or nodes) the traversal starts from.
-        Defaults to 0.
-    n_nodes : int, optional
-        Total number of nodes in the graph. When None, defaults to
-        ``int(edges.max()) + 1`` if ``edges`` has elements, else 0.
-        Defaults to None.
+    start_i : int, optional
+        Index of the node the traversal starts from. Defaults to 0.
 
     Returns
     -------
     (V,) np.ndarray
-        Sum of the edge weights on the tree path from ``start_i`` (or the
-        nearest traversal root) to each of the V nodes; unreachable nodes
-        keep 0.
+        Sum of the edge weights on the tree path from ``start_i`` to each of
+        the V nodes; unreachable nodes keep 0.
     """
-    N = n_nodes if n_nodes is not None else (int(edges.max()) + 1 if edges.size else 0)
-    if N == 0 or edges.size == 0:
-        return np.zeros(N, dtype=weights.dtype)
+    N = int(edges.max()) + 1
     G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])), shape=(N, N))
-    if isinstance(start_i, (int, np.integer)):
-        starts = [int(start_i)]
-    else:
-        starts = [int(s) for s in start_i]
+    # Any spanning tree gives the same sums when the weights are consistent
+    # around every cycle; a breadth-first tree is shallow, which keeps the
+    # pointer jumping below to few passes.
+    order, parent = csg.breadth_first_order(G, start_i, directed=True, return_predecessors=True)
 
-    if len(starts) == 1:
-        # Any spanning tree gives the same sums when the weights are consistent
-        # around every cycle; a breadth-first tree is shallow, which keeps the
-        # pointer jumping below to few passes.
-        order, parent = csg.breadth_first_order(
-            G, starts[0], directed=True, return_predecessors=True
-        )
-        result = np.zeros(N, dtype=weights.dtype)
-        children = order[1:]
-        if children.size:
-            result[children] = np.asarray(G[parent[children], children]).ravel()
-    else:
-        parent = np.full(N, -9999, dtype=np.int64)
-        visited = np.zeros(N, dtype=bool)
-        for s in starts:
-            if visited[s]:
-                continue
-            o, p = csg.breadth_first_order(G, s, directed=True, return_predecessors=True)
-            visited[o] = True
-            mask = p >= 0
-            parent[mask] = p[mask]
-        result = np.zeros(N, dtype=weights.dtype)
-        children = np.flatnonzero(parent >= 0)
-        if children.size:
-            result[children] = np.asarray(G[parent[children], children]).ravel()
+    # Start from the weight of the tree edge into each reached node. Each node
+    # must build on its parent, not on the node visited just before it: two
+    # consecutive nodes in visit order often share no edge.
+    result = np.zeros(N, dtype=weights.dtype)
+    children = order[1:]
+    if children.size:
+        result[children] = np.asarray(G[parent[children], children]).ravel()
 
     # Pointer jumping: each pass adds the partial sum held by a node's current
     # ancestor and then skips to that ancestor's ancestor, so a tree of depth
@@ -523,7 +488,6 @@ def calculate_m(
     *,
     solver: str = "auto",
     return_info: bool = False,
-    n_nodes: int | None = None,
 ) -> np.ndarray | tuple[np.ndarray | None, OptimizeResult] | None:
     """Solve per-vertex integer offsets from quantized edge differences.
 
@@ -553,10 +517,6 @@ def calculate_m(
         weights allow it, and HiGHS otherwise. Defaults to "auto".
     return_info : bool, optional
         Also return the solver report. Defaults to False.
-    n_nodes : int, optional
-        Total number of nodes in the graph. When None, defaults to
-        ``int(np.max(edges)) + 1`` if ``edges`` has elements, else 0.
-        Defaults to None.
 
     Returns
     -------
@@ -585,18 +545,7 @@ def calculate_m(
     if not np.issubdtype(differences.dtype, np.integer):
         raise TypeError(f"differences must have an integer dtype; got {differences.dtype}")
     M = edges.shape[0]
-    N = n_nodes if n_nodes is not None else (int(np.max(edges)) + 1 if M > 0 else 0)
-    if M == 0:
-        m = np.zeros(N, dtype=np.int64)
-        info = OptimizeResult(
-            fun=0.0,
-            success=True,
-            status=0,
-            message="No edges to solve.",
-            ilp_fallback=False,
-            solver="lemon" if solver in ("auto", "lemon") else "highs",
-        )
-        return (m, info) if return_info else m
+    N = np.max(edges) + 1
     w = np.ones((M,), dtype=np.int64) if weights is None else _edge_weights(weights, M)
     if solver != "highs":
         missing = _lemon_rejects(w)
@@ -606,7 +555,7 @@ def calculate_m(
         if solver == "lemon" and missing:
             raise ValueError(f"solver='lemon' needs {missing}")
         if missing is None:
-            m = _solve_offsets_by_flow(edges, differences, w, n_nodes=N)
+            m = _solve_offsets_by_flow(edges, differences, w)
             info = OptimizeResult(
                 fun=float(
                     np.abs(m[edges[:, 1]] - m[edges[:, 0]] + differences) @ w.astype(np.float64)
