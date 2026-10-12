@@ -598,7 +598,7 @@ def puma(
     *,
     return_info: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, OptimizeResult]:
-    """Unwrap phase with PUMA, a graph-cut based phase unwrapping method.
+    """Unwrap phase with PUMA [1]_, a graph-cut based phase unwrapping method.
 
     Iteratively proposes integer jumps on subsets of vertices and keeps
     them when a max-flow/min-cut solve lowers the ``p``-norm energy.
