@@ -592,10 +592,10 @@ def calculate_m(
 def puma(
     psi: np.ndarray,
     edges: np.ndarray,
-    weights: np.ndarray | None = None,
     max_jump: int = 1,
     p: float = 1,
     *,
+    weights: np.ndarray | None = None,
     return_info: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, OptimizeResult]:
     """Unwrap phase with PUMA [1]_, a graph-cut based phase unwrapping method.
@@ -609,13 +609,13 @@ def puma(
         Wrapped phase in units of the period.
     edges : (M, 2) np.ndarray
         Array of edges.
-    weights : (M,) np.ndarray, optional
-        Per-edge non-negative quality weights. When None, edges have uniform
-        weights (``np.ones(M)``). Defaults to None.
     max_jump : int, optional
         Maximum jump step proposed per iteration. Defaults to 1.
     p : float, optional
         Norm order of the energy. Defaults to 1.
+    weights : (M,) np.ndarray, optional
+        Per-edge finite non-negative quality weights. When None, edges have
+        uniform weights (``np.ones(M)``). Defaults to None.
     return_info : bool, optional
         Also return a report on the minimization. Defaults to False.
 
@@ -633,7 +633,7 @@ def puma(
         If PyMaxflow is not installed.
     ValueError
         If ``max_jump < 1``, ``weights`` does not have one entry per edge,
-        or weights are negative.
+        or weights are negative or non-finite.
 
     References
     ----------
@@ -652,8 +652,8 @@ def puma(
         w = np.ones(edges.shape[0], dtype=np.float64)
     else:
         w = _edge_weights(weights, edges.shape[0])
-    if np.min(w, initial=0) < 0:
-        raise ValueError("weights must be non-negative")
+    if not np.isfinite(w).all() or np.min(w, initial=0) < 0:
+        raise ValueError("weights must be finite and non-negative")
 
     def V(x):
         """Absolute value raised to the p-th power.

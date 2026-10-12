@@ -119,11 +119,23 @@ def test_unwrap_dimensional_gc():
     np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
 
 
-def test_unwrap_dimensional_gc_weights():
+def test_unwrap_dimensional_gc_weights(monkeypatch):
     true = _ramp_2d()
-    weights = np.ones_like(true)
+    weights = np.linspace(0.1, 1.0, true.size).reshape(true.shape)
+    captured = {}
+    orig_puma = kamui.puma
+
+    def mock_puma(*args, **kwargs):
+        captured.update(kwargs)
+        return orig_puma(*args, **kwargs)
+
+    monkeypatch.setattr(kamui, "puma", mock_puma)
     result = unwrap_dimensional(wrap_difference(true), method="gc", weights=weights)
     assert result is not None
+    assert "weights" in captured
+    edges, _ = get_2d_edges_and_simplices(true.shape)
+    expected = kamui.utils._merge_weights(weights, edges, "sum")
+    np.testing.assert_array_equal(captured["weights"], expected)
     np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
 
 
