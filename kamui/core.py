@@ -312,6 +312,20 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
     return V
 
 
+def _check_edges_once(edges: np.ndarray) -> None:
+    """Raise ValueError if an edge appears twice, in the same or the opposite direction.
+
+    A self-loop is its own reverse and passes. The pattern matrix is local,
+    so its memory is freed before the caller builds anything large.
+    """
+    N = int(np.max(edges, initial=-1)) + 1
+    S = sp.csr_matrix((np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])), shape=(N, N))
+    # CSR construction merges repeated (u, v), and S * S.T is nonzero off the
+    # diagonal wherever both (u, v) and (v, u) are present
+    if S.nnz != len(edges) or sp.triu(S.multiply(S.T), k=1).nnz:
+        raise ValueError("edges must hold each edge once, in one direction")
+
+
 def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.ndarray:
     """Integrate edge differences along a breadth-first spanning tree.
 
@@ -334,17 +348,14 @@ def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.nd
     Raises
     ------
     ValueError
-        If ``edges`` holds both (u, v) and (v, u) for some u != v, which
-        would count their differences twice.
+        If an edge appears twice, in the same or the opposite direction
+        (other than a self-loop), which would count its difference twice.
     """
+    # Edges in both directions, as integrate took them before v0.4, would
+    # silently double the differences read below.
+    _check_edges_once(edges)
     N = int(edges.max()) + 1
     G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])), shape=(N, N))
-    # Edges in both directions, as integrate took them before v0.4, would
-    # silently double the differences read below. The check runs on G's
-    # sparsity pattern, since a stored weight may be 0.
-    S = sp.csr_matrix((np.ones(G.nnz, dtype=bool), G.indices, G.indptr), shape=G.shape)
-    if sp.triu(S.multiply(S.T), k=1).nnz:
-        raise ValueError("edges holds both (u, v) and (v, u); give each edge once")
     # Any spanning tree gives the same sums when the weights are consistent
     # around every cycle; a breadth-first tree is shallow, which keeps the
     # pointer jumping below to few passes.

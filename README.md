@@ -154,6 +154,8 @@ unwrapped = kamui.unwrap_arbitrary(psi, edges, triangles)
 assert np.allclose(unwrapped - unwrapped[0], point_phase - point_phase[0])
 ```
 
+List each edge once, in one direction, as the `np.unique(np.sort(...))` line above does. With simplices, an edge that appears twice, in the same or the opposite direction, raises `ValueError`.
+
 Without `simplices`, `unwrap_arbitrary(psi, edges)` uses the edgelist formulation, which needs only edges. That suits graphs without a natural cycle structure, such as interferogram networks in time series analysis.
 
 ### Choosing a solver
