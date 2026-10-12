@@ -346,8 +346,9 @@ def test_unwrap_arbitrary_disconnected_components(method):
 
 
 def test_unwrap_arbitrary_disconnected_simplices_2d_and_list():
-    true_phase = np.array([0.0, 1.0, 0.5, 5.0, 6.0, 5.5])
+    true_phase = np.array([0.0, 1.0, 0.5, 5.0, 6.0, 5.5, 99.0])
     psi = wrap_difference(true_phase)
+    # nodes 0..2 form cycle 1, nodes 3..5 form cycle 2, node 6 is isolated
     edges = np.array([[0, 1], [1, 2], [2, 0], [3, 4], [4, 5], [5, 3]])
     simplices_2d = np.array([[0, 1, 2], [3, 4, 5]])
     simplices_list = [[0, 1, 2], [3, 4, 5]]
@@ -355,11 +356,19 @@ def test_unwrap_arbitrary_disconnected_simplices_2d_and_list():
     res_2d, info_2d = unwrap_arbitrary(psi, edges, simplices=simplices_2d, return_info=True)
     assert res_2d is not None and info_2d.success
     np.testing.assert_allclose(res_2d[:3] - res_2d[0], true_phase[:3] - true_phase[0], atol=1e-9)
-    np.testing.assert_allclose(res_2d[3:] - res_2d[3], true_phase[3:] - true_phase[3], atol=1e-9)
+    np.testing.assert_allclose(res_2d[3:6] - res_2d[3], true_phase[3:6] - true_phase[3], atol=1e-9)
+    np.testing.assert_allclose(res_2d[6], psi[6], atol=1e-9)
 
     res_list, info_list = unwrap_arbitrary(psi, edges, simplices=simplices_list, return_info=True)
     assert res_list is not None and info_list.success
     np.testing.assert_allclose(res_list, res_2d, atol=1e-9)
+
+
+def test_unwrap_arbitrary_start_i_isolated():
+    psi = np.array([0.0, 1.0, 5.0])
+    edges = np.array([[0, 1]])
+    res = unwrap_arbitrary(psi, edges, start_i=2)
+    np.testing.assert_allclose(res, psi, atol=1e-9)
 
 
 def test_unwrap_arbitrary_disconnected_ilp_fallback():

@@ -314,111 +314,76 @@ def unwrap_arbitrary(
         )
         return (res, info) if return_info else res
 
+    active_mask = np.zeros(P, dtype=bool)
+    active_mask[edges[:, 0]] = True
+    active_mask[edges[:, 1]] = True
+
+    if np.all(active_mask):
+        sub_edges = edges
+        sub_psi = psi
+        sub_simplices = simplices
+    else:
+        v_map = np.full(P, -1, dtype=np.int64)
+        v_map[active_mask] = np.arange(int(active_mask.sum()))
+        sub_edges = v_map[edges]
+        sub_psi = psi[active_mask]
+        if simplices is None:
+            sub_simplices = None
+        elif isinstance(simplices, np.ndarray) and simplices.ndim == 2:
+            sub_simplices = v_map[simplices]
+        else:
+            sub_simplices = [v_map[np.asarray(cyc)] for cyc in simplices]
+
+    N_sub = len(sub_psi)
     adj = sp.coo_matrix(
-        (np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])),
-        shape=(P, P),
+        (np.ones(len(sub_edges), dtype=bool), (sub_edges[:, 0], sub_edges[:, 1])),
+        shape=(N_sub, N_sub),
     )
     n_components, labels = csg.connected_components(adj, directed=False)
-
-    if n_components > 1:
-        result = np.zeros(P, dtype=np.float64)
-        total_fun = 0.0
-        solvers_used = set()
-        any_fallback = False
-        total_nit = 0
-        weights = kwargs.get("weights")
-
-        for c in range(n_components):
-            nodes_c = np.flatnonzero(labels == c)
-            if len(nodes_c) == 1:
-                result[nodes_c[0]] = psi[nodes_c[0]]
-                continue
-
-            v_map = np.full(P, -1, dtype=np.int64)
-            v_map[nodes_c] = np.arange(len(nodes_c))
-            edge_mask = labels[edges[:, 0]] == c
-            sub_edges = v_map[edges[edge_mask]]
-            sub_psi = psi[nodes_c]
-
-            sub_simplices = None
-            if simplices is not None:
-                if len(simplices) == 0:
-                    sub_simplices = simplices
-                elif isinstance(simplices, np.ndarray) and simplices.ndim == 2:
-                    cycle_mask = labels[simplices[:, 0]] == c
-                    sub_simplices = v_map[simplices[cycle_mask]]
-                else:
-                    sub_simplices = [
-                        v_map[np.asarray(cyc)] for cyc in simplices if labels[cyc[0]] == c
-                    ]
-
-            sub_kwargs = kwargs.copy()
-            if weights is not None:
-                sub_kwargs["weights"] = weights[edge_mask]
-
-            sub_start_i = int(v_map[start_i]) if labels[start_i] == c else 0
-            out = unwrap_arbitrary(
-                sub_psi,
-                sub_edges,
-                sub_simplices,
-                method=method,
-                period=period,
-                start_i=sub_start_i,
-                return_info=return_info,
-                **sub_kwargs,
-            )
-            sub_res, sub_info = out if return_info else (out, None)
-            if sub_res is None:
-                return (None, sub_info) if return_info else None
-            result[nodes_c] = sub_res
-            if return_info:
-                total_fun += float(sub_info.fun)
-                if method == "gc":
-                    total_nit += int(sub_info.nit)
-                else:
-                    solvers_used.add(sub_info.solver)
-                    any_fallback |= bool(sub_info.ilp_fallback)
-
-        if return_info:
-            info_dict: dict[str, Any] = {
-                "fun": total_fun,
-                "success": True,
-                "status": 0,
-                "message": "Optimal solution found across components.",
-            }
-            if method == "gc":
-                info_dict["nit"] = total_nit
-            else:
-                info_dict["solver"] = "+".join(sorted(solvers_used))
-                info_dict["ilp_fallback"] = any_fallback
-            return result, OptimizeResult(**info_dict)
-        return result
+    _, first_indices = np.unique(labels, return_index=True)
+    ref_nodes = first_indices.copy()
+    if active_mask[start_i]:
+        sub_start_i = start_i if np.all(active_mask) else int(v_map[start_i])
+        ref_nodes[labels[sub_start_i]] = sub_start_i
+    ref_for_vertex = ref_nodes[labels]
 
     if method == "gc":
-        m, info = puma(psi / period, edges, return_info=True, **kwargs)
-        result = (m - m[start_i]) * period + psi
+        m, info = puma(sub_psi / period, sub_edges, return_info=True, **kwargs)
+        sub_result = (m - m[ref_for_vertex]) * period + sub_psi
     else:  # method == "ilp"
-        if simplices is None:
+        if sub_simplices is None:
             m, info = calculate_m(
-                edges,
-                np.round((psi[edges[:, 1]] - psi[edges[:, 0]]) / period).astype(np.int64),
+                sub_edges,
+                np.round((sub_psi[sub_edges[:, 1]] - sub_psi[sub_edges[:, 0]]) / period).astype(
+                    np.int64
+                ),
                 return_info=True,
                 **kwargs,
             )
-            result = None if m is None else (m - m[start_i]) * period + psi
+            sub_result = None if m is None else (m - m[ref_for_vertex]) * period + sub_psi
         else:
-            diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
-            k, info = calculate_k(edges, simplices, diff / period, return_info=True, **kwargs)
+            diff = wrap_difference(sub_psi[sub_edges[:, 1]] - sub_psi[sub_edges[:, 0]], period)
+            k, info = calculate_k(
+                sub_edges, sub_simplices, diff / period, return_info=True, **kwargs
+            )
             if k is None:
-                result = None
+                sub_result = None
             else:
                 correct_diff = diff + k * period
-                result = (
+                sub_result = (
                     integrate(
-                        np.concatenate((edges, np.flip(edges, 1)), axis=0),
+                        np.concatenate((sub_edges, np.flip(sub_edges, 1)), axis=0),
                         np.concatenate((correct_diff, -correct_diff), axis=0),
-                        start_i=start_i,
+                        start_i=ref_nodes,
                     )
-                    + psi[start_i]
+                    + sub_psi[ref_for_vertex]
                 )
+
+    if sub_result is None:
+        return (None, info) if return_info else None
+    if np.all(active_mask):
+        result = sub_result
+    else:
+        result = psi.copy().astype(np.float64)
+        result[active_mask] = sub_result
     return (result, info) if return_info else result

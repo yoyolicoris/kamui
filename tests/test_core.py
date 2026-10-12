@@ -40,6 +40,32 @@ def test_integrate_leaves_unreachable_nodes_at_zero():
     np.testing.assert_array_equal(integrate(np.array([[1, 0]]), np.array([5.0])), [0.0, 0.0])
 
 
+def test_integrate_multiple_starts():
+    edges = np.array([[0, 1], [1, 2], [3, 4], [4, 5]])
+    both = np.concatenate((edges, np.flip(edges, 1)), axis=0)
+    weights = np.array([1.0, 2.0, 3.0, 4.0])
+    both_w = np.concatenate((weights, -weights), axis=0)
+    res = integrate(both, both_w, start_i=[0, 3])
+    np.testing.assert_allclose(res, [0.0, 1.0, 3.0, 0.0, 3.0, 7.0])
+
+    # start with no incident outgoing edges
+    res_isolated = integrate(np.array([[1, 2]]), np.array([1.0]), start_i=[0, 1])
+    np.testing.assert_allclose(res_isolated, [0.0, 0.0, 1.0])
+
+    # starts with no children at all
+    res_no_children = integrate(np.array([[2, 3]]), np.array([1.0]), start_i=[0, 1])
+    np.testing.assert_allclose(res_no_children, [0.0, 0.0, 0.0, 0.0])
+
+
+def test_integrate_redundant_starts():
+    edges = np.array([[0, 1], [1, 2], [2, 3]])
+    both = np.concatenate((edges, np.flip(edges, 1)), axis=0)
+    weights = np.array([1.0, 2.0, 3.0])
+    both_w = np.concatenate((weights, -weights), axis=0)
+    res = integrate(both, both_w, start_i=[0, 1])
+    np.testing.assert_allclose(res, [0.0, 1.0, 3.0, 6.0])
+
+
 def _triangle():
     edges = np.array([[0, 1], [1, 2], [2, 0]])
     simplices = [[0, 1, 2]]
