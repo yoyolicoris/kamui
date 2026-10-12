@@ -595,9 +595,10 @@ def puma(
     max_jump: int = 1,
     p: float = 1,
     *,
+    weights: np.ndarray | None = None,
     return_info: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, OptimizeResult]:
-    """Unwrap phase with PUMA, a graph-cut based phase unwrapping method.
+    """Unwrap phase with PUMA [1]_, a graph-cut based phase unwrapping method.
 
     Iteratively proposes integer jumps on subsets of vertices and keeps
     them when a max-flow/min-cut solve lowers the ``p``-norm energy.
@@ -612,6 +613,9 @@ def puma(
         Maximum jump step proposed per iteration. Defaults to 1.
     p : float, optional
         Norm order of the energy. Defaults to 1.
+    weights : (M,) np.ndarray, optional
+        Per-edge finite non-negative quality weights. When None, edges have
+        uniform weights (``np.ones(M)``). Defaults to None.
     return_info : bool, optional
         Also return a report on the minimization. Defaults to False.
 
@@ -627,14 +631,29 @@ def puma(
     ------
     ImportError
         If PyMaxflow is not installed.
+    ValueError
+        If ``max_jump < 1``, ``weights`` does not have one entry per edge,
+        or weights are negative or non-finite.
+
+    References
+    ----------
+    .. [1] J. M. Bioucas-Dias and G. Valadão, "Phase Unwrapping via Graph Cuts,"
+       IEEE Transactions on Image Processing, vol. 16, no. 3, pp. 698-709,
+       March 2007, DOI:10.1109/TIP.2006.888350.
     """
     if maxflow is None:
         raise ImportError("puma requires PyMaxflow; install with `pip install kamui[extra]`")
-    if max_jump > 1:
-        jump_steps = list(range(1, max_jump + 1)) * 2
-    else:
-        jump_steps = [max_jump]
+    if max_jump < 1:
+        raise ValueError(f"max_jump must be at least 1; got {max_jump}")
+    jump_steps = list(range(max_jump, 0, -1))
     total_nodes = psi.size
+    all_nodes = np.arange(total_nodes)
+    if weights is None:
+        w = np.ones(edges.shape[0], dtype=np.float64)
+    else:
+        w = _edge_weights(weights, edges.shape[0])
+    if not np.isfinite(w).all() or np.min(w, initial=0) < 0:
+        raise ValueError("weights must be finite and non-negative")
 
     def V(x):
         """Absolute value raised to the p-th power.
@@ -653,28 +672,27 @@ def puma(
 
     K = np.zeros_like(psi)
 
-    def cal_Ek(K, psi, i, j):
-        """Total p-norm energy of the current integer jumps.
+    i = edges[:, 0]
+    j = edges[:, 1]
+    psi_diff = psi[i] - psi[j]
+    zero_weights = np.zeros(len(edges), dtype=np.float64)
+
+    def cal_Ek(K):
+        """Total weighted p-norm energy of the current integer jumps.
 
         Parameters
         ----------
         K : (N,) np.ndarray
             Integer jumps per vertex.
-        psi : (N,) np.ndarray
-            Wrapped phase in units of the period.
-        i : (M,) np.ndarray
-            Source vertex of each edge.
-        j : (M,) np.ndarray
-            Target vertex of each edge.
 
         Returns
         -------
         float
-            Sum of ``|K[j] - K[i] - psi[i] + psi[j]| ** p`` over edges.
+            Sum of ``w * |K[j] - K[i] - psi_diff| ** p`` over edges.
         """
-        return np.sum(V(K[j] - K[i] - psi[i] + psi[j]))
+        return float(np.sum(w * V(K[j] - K[i] - psi_diff)))
 
-    prev_Ek = cal_Ek(K, psi, edges[:, 0], edges[:, 1])
+    prev_Ek = cal_Ek(K)
     nit = 0
 
     for step in jump_steps:
@@ -682,37 +700,38 @@ def puma(
             G = maxflow.Graph[float]()
             G.add_nodes(total_nodes)
 
-            i, j = edges[:, 0], edges[:, 1]
-            psi_diff = psi[i] - psi[j]
             a = (K[j] - K[i]) - psi_diff
-            e00 = e11 = V(a)
-            e01 = V(a - step)
-            e10 = V(a + step)
-            weight = np.maximum(0, e10 + e01 - e00 - e11)
+            e00 = e11 = w * V(a)
+            e01 = w * V(a + step)
+            e10 = w * V(a - step)
+            weight = np.maximum(0.0, e10 + e01 - e00 - e11)
 
-            G.add_edges(edges[:, 0], edges[:, 1], weight, np.zeros_like(weight))
+            G.add_edges(i, j, weight, zero_weights)
 
-            a = e10 - e00
-            flip_mask = a < 0
-            tmp_st_weight = np.zeros((2, total_nodes))
-            flip_index = np.stack((flip_mask.astype(int), 1 - flip_mask.astype(int)), axis=1)
-            positive_a = np.where(flip_mask, -a, a)
-            np.add.at(tmp_st_weight, (flip_index.ravel(), edges.ravel()), positive_a.repeat(2))
+            diff = e10 - e00
+            pos_diff = np.maximum(0.0, diff)
+            neg_diff = np.maximum(0.0, -diff)
 
-            for i in range(total_nodes):
-                G.add_tedge(i, tmp_st_weight[0, i], tmp_st_weight[1, i])
+            tmp_s = np.zeros(total_nodes, dtype=np.float64)
+            tmp_t = np.zeros(total_nodes, dtype=np.float64)
+            np.add.at(tmp_s, i, pos_diff)
+            np.add.at(tmp_t, i, neg_diff)
+            np.add.at(tmp_s, j, neg_diff)
+            np.add.at(tmp_t, j, pos_diff)
+
+            G.add_grid_tedges(all_nodes, tmp_s, tmp_t)
             G.maxflow()
             nit += 1
 
-            partition = G.get_grid_segments(np.arange(total_nodes))
-            K[~partition] += step
+            partition = G.get_grid_segments(all_nodes)
+            K[partition] += step
 
-            energy = cal_Ek(K, psi, edges[:, 0], edges[:, 1])
+            energy = cal_Ek(K)
 
             if energy < prev_Ek:
                 prev_Ek = energy
             else:
-                K[~partition] -= step
+                K[partition] -= step
                 break
     if not return_info:
         return K

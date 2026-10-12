@@ -162,7 +162,7 @@ Without `simplices`, `unwrap_arbitrary(psi, edges)` uses the edgelist formulatio
 | --- | --- | --- | --- |
 | Simplex ILP (default) | `unwrap_dimensional(x)`, or `unwrap_arbitrary(psi, edges, simplices)` | edges and elementary cycles | By default each edge costs the number of its cycles that have no residue; `weights` overrides that. 2-D grids and planar meshes with integer weights, the defaults included, are solved by LEMON, and everything else by HiGHS. `solver="highs"` forces HiGHS, and `solver="lemon"` raises an error instead of falling back. |
 | Edgelist ILP | `use_edgelist=True`, or `unwrap_arbitrary(psi, edges)` | edges only | Uniform weights unless `weights` is given. Integer weights, the default included, are solved by LEMON, and fractional ones by HiGHS; `solver` works as for the simplex ILP. |
-| PUMA | `method="gc"` | edges and `pip install kamui[extra]` | Minimizes a $`p`$-norm energy (options `p` and `max_jump`) and takes no weights. Currently slower than the ILP solvers on grids ([#26](https://github.com/yoyolicoris/kamui/issues/26)). GPL; see [Installation](#installation). |
+| PUMA | `method="gc"` | edges and `pip install kamui[extra]` | Minimizes a $`p`$-norm energy (options `p`, `max_jump`, and optional non-negative `weights`). Uses graph cuts; slower than the single-pass ILP/LEMON solvers on grids ([#26](https://github.com/yoyolicoris/kamui/issues/26)). GPL; see [Installation](#installation). |
 
 The edgelist ILP needs no cycles, because it optimizes vertex offsets $`m \in \mathbb{Z}^{\lvert V \rvert}`$ directly, with $`\phi = \psi + 2\pi m`$:
 
@@ -174,10 +174,10 @@ The term inside the absolute value is the edge ambiguity $`k_e`$. This is theref
 
 Its LP dual is a min-cost circulation on the graph itself, with a flow $`y_e \in [-w_e, w_e]`$ along each edge that maximizes $`\sum_e y_e \, \text{round}\left( (\psi_v - \psi_u) / 2\pi \right)`$. LEMON solves that circulation, and its node potentials are an optimal $`m`$.
 
-PUMA instead uses graph cuts to minimize the $`p`$-norm of the unwrapped differences:
+PUMA instead uses graph cuts to minimize the weighted $`p`$-norm of the unwrapped differences:
 
 ```math
-\min_{m \in \mathbb{Z}^{\lvert V \rvert}} \; \sum_{e = (u, v) \in E} \lvert \phi_v - \phi_u \rvert^{p},
+\min_{m \in \mathbb{Z}^{\lvert V \rvert}} \; \sum_{e = (u, v) \in E} w_e \lvert \phi_v - \phi_u \rvert^{p},
 \qquad \phi = \psi + 2\pi m .
 ```
 
@@ -239,7 +239,7 @@ If unwrapping is unexpectedly slow, check your SciPy build. On macOS (Apple Sili
 - [ ] Missing data and disconnected graphs ([#23](https://github.com/yoyolicoris/kamui/issues/23))
 - [x] Lower memory use on large scenes ([#24](https://github.com/yoyolicoris/kamui/issues/24))
 - [x] A min-cost-flow solver for 2-D and planar data ([#25](https://github.com/yoyolicoris/kamui/issues/25))
-- [ ] Faster PUMA ([#26](https://github.com/yoyolicoris/kamui/issues/26))
+- [x] Faster PUMA ([#26](https://github.com/yoyolicoris/kamui/issues/26))
 - [ ] A conda-forge package ([#13](https://github.com/yoyolicoris/kamui/issues/13))
 
 ## References

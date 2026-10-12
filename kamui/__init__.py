@@ -99,10 +99,11 @@ def unwrap_dimensional(
         Non-negative per-pixel weights defining the 'goodness' of each
         value, shaped like x; NaN marks pixels without a weight, and edges
         that touch one get weight 0. They are used as given, without
-        rescaling. Only the ILP solvers (``method="ilp"``) use weights.
-        Integer weights, such as ``np.round(coherence * 100)``, let LEMON
-        solve the program; fractional ones go to HiGHS. For the rescaled
-        weights of :func:`kamui.prepare_weights`, pass its result to
+        rescaling. Both the ILP solvers (``method="ilp"``) and PUMA
+        (``method="gc"``) accept weights. Integer weights, such as
+        ``np.round(coherence * 100)``, let LEMON solve the ILP program;
+        fractional ones go to HiGHS. For the rescaled weights of
+        :func:`kamui.prepare_weights`, pass its result to
         :func:`kamui.unwrap_arbitrary` instead. Defaults to None.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
@@ -139,8 +140,7 @@ def unwrap_dimensional(
     psi = x.ravel()
 
     if weights is not None:
-        # convert per-vertex weights to per-edge weights; forward them only
-        # when given, since puma (method="gc") takes no weights argument
+        # convert per-vertex weights to per-edge weights
         kwargs["weights"] = _merge_weights(weights, edges, merging_method)
     out = unwrap_arbitrary(
         psi,
@@ -180,10 +180,10 @@ def unwrap_arbitrary(
         The connections should be consistent with the edges. An (N, k)
         integer array of equal-length cycles, such as Delaunay triangles or
         the cycles of the grid builders, is the fastest input.
-        This is also used to compute automatic weights for each edge.
-        If not provided and method is "ilp", an edgelist-based ILP solver
-        will be used without weighting.
-        Defaults to None.
+        When ``method="ilp"`` and ``weights`` is None, this is also used to
+        compute automatic weights for each edge. If not provided and
+        method is "ilp", an edgelist-based ILP solver will be used without
+        weighting. Not used when ``method="gc"``. Defaults to None.
     method : str, optional
         The method to be used. Valid options are "ilp" and "gc", where "gc" corresponds to PUMA.
         Defaults to "ilp".

@@ -619,7 +619,7 @@ def test_puma_accepts_energy_decrease():
     psi = np.array([0.0, -0.4, 0.3, -0.2])
     edges = np.array([[0, 1], [1, 2], [2, 3]])
     k = puma(psi, edges, max_jump=1)
-    np.testing.assert_array_equal(k, [1.0, 1.0, 0.0, 1.0])
+    np.testing.assert_array_equal(k, [1.0, 1.0, 0.0, 0.0])
     i, j = edges[:, 0], edges[:, 1]
     before = np.sum(np.abs(psi[j] - psi[i]))
     after = np.sum(np.abs(k[j] - k[i] - psi[i] + psi[j]))
@@ -633,6 +633,71 @@ def test_puma_reports_final_energy():
     i, j = edges[:, 0], edges[:, 1]
     assert info.fun == pytest.approx(np.sum(np.abs(k[j] - k[i] - psi[i] + psi[j])))
     assert info.success and info.nit >= 2
+
+
+def test_puma_accepts_weights():
+    psi = np.array([0.0, -0.4, 0.3, -0.2])
+    edges = np.array([[0, 1], [1, 2], [2, 3]])
+    weights = np.array([2.0, 0.5, 1.0])
+    k, info = puma(psi, edges, weights=weights, return_info=True)
+    i, j = edges[:, 0], edges[:, 1]
+    expected_energy = np.sum(weights * np.abs(k[j] - k[i] - psi[i] + psi[j]))
+    assert info.fun == pytest.approx(expected_energy)
+
+
+def test_puma_accepts_positional_arguments():
+    psi = np.array([0.0, -0.4, 0.3, -0.2])
+    edges = np.array([[0, 1], [1, 2], [2, 3]])
+    k = puma(psi, edges, 2, 1.0)
+    assert k.shape == psi.shape
+
+
+def test_puma_optimizes_weighted_objective_on_conflicting_cycle():
+    # 3-node cycle with conflicting differences (sum around cycle = -1.0)
+    psi = np.array([0.0, 0.4, 0.8])
+    edges = np.array([[0, 1], [1, 2], [2, 0]])
+
+    # Penalizing edge (2, 0) lightly causes the cut to occur on edge (2, 0)
+    w_cut_20 = np.array([10.0, 10.0, 0.1])
+    k_20, info_20 = puma(psi, edges, weights=w_cut_20, return_info=True)
+    np.testing.assert_array_equal(k_20, [0.0, 0.0, 0.0])
+
+    # Penalizing edge (0, 1) lightly causes the cut to occur on edge (0, 1)
+    w_cut_01 = np.array([0.1, 10.0, 10.0])
+    k_01, info_01 = puma(psi, edges, weights=w_cut_01, return_info=True)
+    np.testing.assert_array_equal(k_01, [1.0, 0.0, 0.0])
+
+    # Each solution achieves strictly lower weighted energy under its own weights
+    i, j = edges[:, 0], edges[:, 1]
+    e_20_under_w20 = np.sum(w_cut_20 * np.abs(k_20[j] - k_20[i] - psi[i] + psi[j]))
+    e_01_under_w20 = np.sum(w_cut_20 * np.abs(k_01[j] - k_01[i] - psi[i] + psi[j]))
+    assert e_20_under_w20 < e_01_under_w20
+
+    e_01_under_w01 = np.sum(w_cut_01 * np.abs(k_01[j] - k_01[i] - psi[i] + psi[j]))
+    e_20_under_w01 = np.sum(w_cut_01 * np.abs(k_20[j] - k_20[i] - psi[i] + psi[j]))
+    assert e_01_under_w01 < e_20_under_w01
+
+
+@pytest.mark.parametrize("bad_val", [-1.0, np.nan, np.inf])
+def test_puma_rejects_invalid_weights(bad_val):
+    psi = np.array([0.0, 0.5])
+    edges = np.array([[0, 1]])
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        puma(psi, edges, weights=np.array([bad_val]))
+
+
+def test_puma_rejects_bad_weights_shape():
+    psi = np.array([0.0, 0.5])
+    edges = np.array([[0, 1]])
+    with pytest.raises(ValueError, match="one entry per edge"):
+        puma(psi, edges, weights=np.array([1.0, 2.0]))
+
+
+def test_puma_rejects_nonpositive_max_jump():
+    psi = np.array([0.0, 0.5])
+    edges = np.array([[0, 1]])
+    with pytest.raises(ValueError, match="at least 1"):
+        puma(psi, edges, max_jump=0)
 
 
 def test_puma_requires_pymaxflow(monkeypatch):
