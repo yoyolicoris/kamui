@@ -10,6 +10,7 @@ from kamui import (
     unwrap_dimensional,
     wrap_difference,
 )
+from kamui.utils import _merge_weights
 
 
 def test_version_wired():
@@ -130,11 +131,14 @@ def test_unwrap_dimensional_gc_weights(monkeypatch):
         return orig_puma(*args, **kwargs)
 
     monkeypatch.setattr(kamui, "puma", mock_puma)
-    result = unwrap_dimensional(wrap_difference(true), method="gc", weights=weights)
+    result, info = unwrap_dimensional(
+        wrap_difference(true), method="gc", weights=weights, return_info=True
+    )
     assert result is not None
+    assert info.success and info.nit >= 1
     assert "weights" in captured
     edges, _ = get_2d_edges_and_simplices(true.shape)
-    expected = kamui.utils._merge_weights(weights, edges, "sum")
+    expected = _merge_weights(weights, edges, "sum")
     np.testing.assert_array_equal(captured["weights"], expected)
     np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
 
@@ -276,6 +280,16 @@ def test_unwrap_arbitrary_gc():
     edges = np.array([[0, 1]])
     result = unwrap_arbitrary(psi, edges, method="gc")
     np.testing.assert_allclose(result, psi, atol=1e-9)
+
+
+def test_unwrap_arbitrary_gc_with_weights():
+    psi = np.array([0.0, 1.0])
+    edges = np.array([[0, 1]])
+    weights = np.array([2.5])
+    result, info = unwrap_arbitrary(psi, edges, method="gc", weights=weights, return_info=True)
+    np.testing.assert_allclose(result, psi, atol=1e-9)
+    expected_fun = float(weights[0] * (np.abs(psi[1] - psi[0]) / (2 * np.pi)))
+    assert info.success and info.fun == pytest.approx(expected_fun)
 
 
 def test_unwrap_arbitrary_rejects_bad_method():

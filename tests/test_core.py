@@ -649,7 +649,7 @@ def test_puma_accepts_positional_arguments():
     psi = np.array([0.0, -0.4, 0.3, -0.2])
     edges = np.array([[0, 1], [1, 2], [2, 3]])
     k = puma(psi, edges, 2, 1.0)
-    assert k is not None
+    assert k.shape == psi.shape
 
 
 def test_puma_optimizes_weighted_objective_on_conflicting_cycle():
