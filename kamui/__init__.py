@@ -24,7 +24,7 @@ import scipy.sparse as sp
 from scipy.optimize import OptimizeResult
 from scipy.sparse.csgraph import connected_components
 
-from .core import calculate_k, calculate_m, integrate, puma
+from .core import _check_edges_once, calculate_k, calculate_m, integrate, puma
 from .utils import (
     _merge_weights,
     get_2d_edges_and_simplices,
@@ -183,7 +183,8 @@ def unwrap_arbitrary(
     psi : 1-D np.ndarray of shape (P,)
         The phase (vertices) to be unwrapped.
     edges : 2-D np.ndarray of shape (M, 2)
-        The edges of the graph.
+        The edges of the graph. With ``simplices`` and ``method="ilp"``,
+        list each edge once, in one direction.
     simplices : (N,) iterable of simplices, optional
         Each element is a list of vertices that form a simplex (a.k.a elementary cycle).
         The connections should be consistent with the edges. An (N, k)
@@ -223,6 +224,13 @@ def unwrap_arbitrary(
         ``ilp_fallback`` tells whether HiGHS had to solve the integer
         program. For ``method="gc"`` it is the report of
         :func:`kamui.core.puma`, with the final energy as ``fun``.
+
+    Raises
+    ------
+    ValueError
+        If ``method`` is unknown, or if ``simplices`` are given with
+        ``method="ilp"`` and an edge appears twice, in the same or the
+        opposite direction.
     """
     # Reference each connected component to start_i if it holds it, and to its
     # first vertex otherwise.
@@ -251,19 +259,20 @@ def unwrap_arbitrary(
                 m = np.pad(m, (0, n - len(m)))
                 result = (m - m[ref]) * period + psi
         else:
+            _check_edges_once(edges)  # integrate needs this; fail before solving
             diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
             k, info = calculate_k(edges, simplices, diff / period, return_info=True, **kwargs)
             if k is None:
                 result = None
             else:
                 correct_diff = diff + k * period
-                # A virtual vertex n joins every root by a zero edge, so one
-                # traversal from it covers all components.
+                # A virtual vertex n joins every root by a zero-weight edge,
+                # so one traversal from it covers all components.
                 links = np.stack((np.full_like(roots, n), roots), axis=1)
                 result = (
                     integrate(
-                        np.concatenate((edges, np.flip(edges, 1), links), axis=0),
-                        np.concatenate((correct_diff, -correct_diff, np.zeros(len(roots)))),
+                        np.concatenate((edges, links), axis=0),
+                        np.concatenate((correct_diff, np.zeros(len(roots)))),
                         start_i=n,
                     )[:n]
                     + psi[ref]

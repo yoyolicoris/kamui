@@ -298,6 +298,16 @@ def test_unwrap_arbitrary_gc_with_weights():
     assert info.success and info.fun == pytest.approx(expected_fun)
 
 
+@pytest.mark.parametrize("extra", [[1, 0], [0, 1]])
+def test_unwrap_arbitrary_rejects_repeated_edges_before_solving(monkeypatch, extra):
+    # integrate would count a repeated edge twice, so the simplex path must
+    # refuse it before running the solver
+    edges = np.array([[0, 1], [1, 2], [2, 3], [3, 0], extra])
+    monkeypatch.setattr(kamui, "calculate_k", lambda *a, **k: pytest.fail("solver ran"))
+    with pytest.raises(ValueError, match="each edge once"):
+        unwrap_arbitrary(np.zeros(4), edges, [[0, 1, 2, 3]])
+
+
 def test_unwrap_arbitrary_rejects_bad_method():
     with pytest.raises(ValueError, match="method must be"):
         unwrap_arbitrary(np.zeros(2), np.array([[0, 1]]), method="bad")
