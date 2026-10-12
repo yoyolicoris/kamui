@@ -29,7 +29,7 @@ CI runs Pixi with `locked: true`. After editing `pixi.toml`, run `pixi install` 
 The package has three modules.
 
 - **`kamui/__init__.py`** holds the public entry points.
-  - `unwrap_dimensional` builds the grid graph (cycles as an `(S, 4)` array), drops NaN pixels and explicitly masked pixels (`mask`) along with incident edges and cycles, turns per-pixel `weights` into per-edge weights with `utils._merge_weights` (sum of the two pixels by default, used as given without rescaling, NaN → 0), hands off to `unwrap_arbitrary`, and embeds unwrapped values back with NaN at invalid pixels.
+  - `unwrap_dimensional` builds the grid graph (cycles as an `(S, 4)` array), drops NaN pixels along with incident edges and cycles, turns per-pixel `weights` into per-edge weights with `utils._merge_weights` (sum of the two pixels by default, used as given without rescaling, NaN → 0), hands off to `unwrap_arbitrary`, and embeds unwrapped values back with NaN at invalid pixels.
   - `unwrap_arbitrary` partitions the graph into connected components with `scipy.sparse.csgraph.connected_components`. Each component is referenced to `start_i` (if contained) or its own first node, and it picks the solver:
     - `method="ilp"` with simplices: the simplex ILP (`calculate_k`).
     - `method="ilp"` without simplices: the edgelist ILP (`calculate_m`).

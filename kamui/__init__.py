@@ -77,7 +77,6 @@ def unwrap_dimensional(
     cyclical_axis: int | tuple[int, ...] = (),
     merging_method: str = "sum",
     weights: np.ndarray | None = None,
-    mask: np.ndarray | None = None,
     *,
     return_info: bool = False,
     **kwargs: Any,
@@ -87,7 +86,9 @@ def unwrap_dimensional(
     Parameters
     ----------
     x : 2-D or 3-D np.ndarray
-        The phase to be unwrapped.
+        The phase to be unwrapped. NaN pixels are treated as missing data:
+        they and their incident edges and cycles are excluded, and return
+        NaN in the unwrapped result.
     start_pixel : tuple of int, optional
         The reference pixel to start unwrapping.
         Defaults to (0, 0) for 2-D data and (0, 0, 0) for 3-D data.
@@ -108,12 +109,6 @@ def unwrap_dimensional(
         fractional ones go to HiGHS. For the rescaled weights of
         :func:`kamui.prepare_weights`, pass its result to
         :func:`kamui.unwrap_arbitrary` instead. Defaults to None.
-    mask : np.ndarray, optional
-        Boolean mask of the same shape as x indicating pixels to ignore
-        (True marks invalid or missing pixels). Missing pixels, as well as
-        any pixels containing NaN in x, are excluded along with incident
-        edges and cycles, and return NaN in the unwrapped result.
-        Defaults to None.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -157,14 +152,8 @@ def unwrap_dimensional(
             raise ValueError(
                 f"weights must have the same shape as x: got {weights.shape} for {x.shape}"
             )
-    if mask is not None:
-        mask = np.asarray(mask, dtype=bool)
-        if mask.shape != x.shape:
-            raise ValueError(f"mask must have the same shape as x: got {mask.shape} for {x.shape}")
 
     valid = np.isfinite(x)
-    if mask is not None:
-        valid &= ~mask
 
     if np.all(valid):
         psi = x.ravel()
@@ -192,7 +181,7 @@ def unwrap_dimensional(
             fun=0.0,
             success=True,
             status=0,
-            message="All pixels masked.",
+            message="All pixels are non-finite or NaN.",
             ilp_fallback=False,
             solver="none",
         )

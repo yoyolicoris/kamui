@@ -382,22 +382,7 @@ def test_unwrap_dimensional_nan_grid_2d(use_edgelist, method):
     )
 
 
-def test_unwrap_dimensional_explicit_mask():
-    true_phase = _ramp_2d()
-    wrapped = wrap_difference(true_phase)
-    mask = np.zeros(wrapped.shape, dtype=bool)
-    mask[2:6, :] = True
-
-    unwrapped = unwrap_dimensional(wrapped, mask=mask)
-    assert np.isnan(unwrapped[2:6, :]).all()
-    assert not np.isnan(unwrapped[:2, :]).any()
-    assert not np.isnan(unwrapped[6:, :]).any()
-    np.testing.assert_allclose(
-        np.diff(unwrapped[:2, :], axis=0), np.diff(true_phase[:2, :], axis=0), atol=1e-9
-    )
-
-
-def test_unwrap_dimensional_all_masked_or_nan():
+def test_unwrap_dimensional_all_nan():
     x = np.full((6, 6), np.nan)
     res = unwrap_dimensional(x)
     assert np.isnan(res).all()
@@ -405,14 +390,8 @@ def test_unwrap_dimensional_all_masked_or_nan():
     assert np.isnan(res).all()
     assert info.success and info.solver == "none"
 
-    # with explicit mask
-    x_finite = np.zeros((4, 4))
-    mask = np.ones((4, 4), dtype=bool)
-    res_m = unwrap_dimensional(x_finite, mask=mask)
-    assert np.isnan(res_m).all()
 
-
-def test_unwrap_dimensional_masked_start_pixel():
+def test_unwrap_dimensional_nan_start_pixel():
     true_phase = _ramp_2d()
     wrapped = wrap_difference(true_phase)
     wrapped[0, 0] = np.nan
@@ -431,8 +410,6 @@ def test_unwrap_dimensional_rejects_bad_shapes():
     x = np.zeros((4, 4))
     with pytest.raises(ValueError, match="weights must have the same shape"):
         unwrap_dimensional(x, weights=np.zeros((3, 3)))
-    with pytest.raises(ValueError, match="mask must have the same shape"):
-        unwrap_dimensional(x, mask=np.zeros((3, 3), dtype=bool))
 
 
 def test_unwrap_dimensional_with_nan_weights_and_nans():
@@ -463,7 +440,7 @@ def test_unwrap_dimensional_nan_grid_3d():
     )
 
 
-def test_unwrap_dimensional_masked_failure(monkeypatch):
+def test_unwrap_dimensional_nan_failure(monkeypatch):
     monkeypatch.setattr(kamui, "unwrap_arbitrary", lambda *a, **k: None)
     x = np.zeros((4, 4))
     x[0, 0] = np.nan

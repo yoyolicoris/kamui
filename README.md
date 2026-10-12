@@ -210,17 +210,17 @@ assert np.isclose(simplex.fun, edgelist.fun)
 
 ### Missing data and disconnected graphs
 
-In `unwrap_dimensional`, pixels containing NaN, or pixels marked with an optional boolean `mask` (`mask=True` to ignore), are treated as missing data: they and their incident edges and cycles are dropped, and `NaN` is returned at those positions.
+In `unwrap_dimensional`, pixels containing NaN are treated as missing data: they and their incident edges and cycles are dropped, and `NaN` is returned at those positions.
 
 When missing pixels or disconnected graphs split the data into multiple separate components, each component is unwrapped independently. The component containing `start_pixel` (or `start_i` in `unwrap_arbitrary`) is referenced to that start point; every other component is referenced to its own first node:
 
 ```python
-masked_phase = wrapped.copy()
-masked_phase[40:60, :] = np.nan
+nan_phase = wrapped.copy()
+nan_phase[40:60, :] = np.nan
 
-unwrapped_masked = kamui.unwrap_dimensional(masked_phase)
-assert np.isnan(unwrapped_masked[50, 0])
-assert not np.isnan(unwrapped_masked[10, 0])
+unwrapped_nan = kamui.unwrap_dimensional(nan_phase)
+assert np.isnan(unwrapped_nan[50, 0])
+assert not np.isnan(unwrapped_nan[10, 0])
 ```
 
 ## Performance and memory
