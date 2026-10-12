@@ -38,6 +38,15 @@ def test_integrate_sums_along_tree_paths():
     np.testing.assert_allclose(integrate(edges, weights), [0.0, 1.0, 3.0, 4.0, 12.0])
 
 
+def test_integrate_rejects_edges_in_both_directions():
+    with pytest.raises(ValueError, match="give each edge once"):
+        integrate(np.array([[0, 1], [1, 2], [1, 0]]), np.array([1.0, 2.0, -1.0]))
+    with pytest.raises(ValueError, match="give each edge once"):  # zero weights still count
+        integrate(np.array([[0, 1], [1, 0]]), np.array([0.0, 0.0]))
+    # a self-loop is its own reverse and never a tree edge, so it is allowed
+    np.testing.assert_allclose(integrate(np.array([[0, 1], [1, 1]]), np.array([1.0, 5.0])), [0, 1])
+
+
 def test_integrate_leaves_unconnected_nodes_at_zero():
     np.testing.assert_array_equal(integrate(np.array([[1, 2]]), np.array([5.0])), [0.0, 0.0, 0.0])
 

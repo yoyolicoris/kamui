@@ -319,8 +319,7 @@ def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.nd
     ----------
     edges : (N, 2) np.ndarray
         Edges as (u, v) index pairs. Each edge is also walked from v to u,
-        with its difference negated, so give every edge once: listing both
-        (u, v) and (v, u) doubles their differences.
+        with its difference negated, so give every edge once.
     weights : (N,) np.ndarray
         Difference along each edge, from u to v.
     start_i : int, optional
@@ -331,9 +330,21 @@ def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.nd
     (V,) np.ndarray
         Sum of the differences on the tree path from ``start_i`` to each of
         the V nodes; nodes not connected to ``start_i`` keep 0.
+
+    Raises
+    ------
+    ValueError
+        If ``edges`` holds both (u, v) and (v, u) for some u != v, which
+        would count their differences twice.
     """
     N = int(edges.max()) + 1
     G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])), shape=(N, N))
+    # Edges in both directions, as integrate took them before v0.4, would
+    # silently double the differences read below. The check runs on G's
+    # sparsity pattern, since a stored weight may be 0.
+    S = sp.csr_matrix((np.ones(G.nnz, dtype=bool), G.indices, G.indptr), shape=G.shape)
+    if sp.triu(S.multiply(S.T), k=1).nnz:
+        raise ValueError("edges holds both (u, v) and (v, u); give each edge once")
     # Any spanning tree gives the same sums when the weights are consistent
     # around every cycle; a breadth-first tree is shallow, which keeps the
     # pointer jumping below to few passes.
