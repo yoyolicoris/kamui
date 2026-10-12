@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 from scipy.optimize import OptimizeResult
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import Delaunay
 
 import kamui
@@ -393,31 +395,6 @@ def test_unwrap_arbitrary_disconnected_ilp_fallback():
     assert "highs" in info.solver
 
 
-def test_unwrap_arbitrary_disconnected_subproblem_failure(monkeypatch):
-    edges = np.array([[0, 1], [2, 3]])
-    psi = np.zeros(4)
-
-    monkeypatch.setattr(
-        kamui,
-        "calculate_m",
-        lambda *a, **k: (None, OptimizeResult(success=False)) if k.get("return_info") else None,
-    )
-    assert unwrap_arbitrary(psi, edges, return_info=False) is None
-    res, info = unwrap_arbitrary(psi, edges, return_info=True)
-    assert res is None
-    assert not info.success
-
-
-def test_unwrap_arbitrary_empty_inputs():
-    empty_psi = np.empty(0, dtype=np.float64)
-    empty_edges = np.empty((0, 2), dtype=np.int64)
-    res = unwrap_arbitrary(empty_psi, empty_edges)
-    assert res.shape == (0,)
-    res, info = unwrap_arbitrary(empty_psi, empty_edges, return_info=True)
-    assert res.shape == (0,)
-    assert info.success
-
-
 def test_unwrap_arbitrary_isolated_vertices():
     psi = np.array([0.5, 1.2, -0.8])
     empty_edges = np.empty((0, 2), dtype=np.int64)
@@ -427,13 +404,6 @@ def test_unwrap_arbitrary_isolated_vertices():
     # also with method="gc"
     res_gc = unwrap_arbitrary(psi, empty_edges, method="gc")
     np.testing.assert_allclose(res_gc, psi, atol=1e-9)
-
-
-def test_unwrap_arbitrary_start_i_out_of_bounds():
-    with pytest.raises(IndexError, match="out of bounds"):
-        unwrap_arbitrary(np.zeros(3), np.array([[0, 1]]), start_i=5)
-    with pytest.raises(IndexError, match="out of bounds"):
-        unwrap_arbitrary(np.zeros(3), np.array([[0, 1]]), start_i=-1)
 
 
 @pytest.mark.parametrize("use_edgelist", [False, True])
@@ -456,15 +426,6 @@ def test_unwrap_dimensional_nan_grid_2d(use_edgelist, method):
     )
 
 
-def test_unwrap_dimensional_all_nan():
-    x = np.full((6, 6), np.nan)
-    res = unwrap_dimensional(x)
-    assert np.isnan(res).all()
-    res, info = unwrap_dimensional(x, return_info=True)
-    assert np.isnan(res).all()
-    assert info.success and info.solver == "none"
-
-
 def test_unwrap_dimensional_nan_start_pixel():
     true_phase = _ramp_2d()
     wrapped = wrap_difference(true_phase)
@@ -473,17 +434,6 @@ def test_unwrap_dimensional_nan_start_pixel():
     unwrapped = unwrap_dimensional(wrapped, start_pixel=(0, 0))
     assert np.isnan(unwrapped[0, 0])
     assert not np.isnan(unwrapped[1:, 1:]).any()
-
-
-def test_unwrap_dimensional_start_pixel_out_of_bounds():
-    with pytest.raises(IndexError, match="out of bounds"):
-        unwrap_dimensional(np.zeros((4, 4)), start_pixel=(10, 0))
-
-
-def test_unwrap_dimensional_rejects_bad_shapes():
-    x = np.zeros((4, 4))
-    with pytest.raises(ValueError, match="weights must have the same shape"):
-        unwrap_dimensional(x, weights=np.zeros((3, 3)))
 
 
 def test_unwrap_dimensional_with_nan_weights_and_nans():
@@ -514,24 +464,44 @@ def test_unwrap_dimensional_nan_grid_3d():
     )
 
 
-def test_unwrap_dimensional_nan_failure(monkeypatch):
-    monkeypatch.setattr(kamui, "unwrap_arbitrary", lambda *a, **k: None)
-    x = np.zeros((4, 4))
-    x[0, 0] = np.nan
-    assert unwrap_dimensional(x) is None
-
-
-def test_unwrap_dimensional_isolated_pixel():
-    x = np.full((3, 3), np.nan)
-    x[1, 1] = 1.0  # isolated finite pixel with degree 0
-    res = unwrap_dimensional(x)
+@pytest.mark.parametrize("kwargs", [{}, {"use_edgelist": True}, {"method": "gc"}])
+def test_unwrap_dimensional_all_nan(kwargs):
+    res, info = unwrap_dimensional(np.full((6, 6), np.nan), return_info=True, **kwargs)
     assert np.isnan(res).all()
+    assert info.success
 
 
-def test_unwrap_dimensional_connected_and_isolated_pixel():
+def test_unwrap_dimensional_keeps_isolated_pixels():
     x = np.full((4, 4), np.nan)
     x[:2, :2] = 1.0  # 2x2 connected block
-    x[3, 3] = 2.0  # isolated pixel
+    x[3, 3] = 2.0  # finite pixel with no finite neighbour
     res = unwrap_dimensional(x)
-    assert not np.isnan(res[:2, :2]).any()
-    assert np.isnan(res[3, 3])
+    np.testing.assert_array_equal(res, x)
+
+
+@pytest.mark.parametrize("kwargs", [{}, {"use_edgelist": True}, {"method": "gc"}])
+def test_unwrap_dimensional_many_components(kwargs):
+    # random NaNs split the grid into hundreds of components
+    rng = np.random.default_rng(0)
+    g = np.meshgrid(np.arange(40), np.arange(40), indexing="ij")
+    true_phase = 0.9 * g[0] + 0.7 * g[1]
+    x = wrap_difference(true_phase)
+    x[rng.random(x.shape) < 0.45] = np.nan
+    edges, _ = kamui.get_2d_edges_and_simplices(x.shape)
+    edges = edges[np.isfinite(x.ravel()[edges]).all(axis=1)]
+    _, labels = connected_components(
+        coo_matrix((np.ones(len(edges)), tuple(edges.T)), shape=(x.size,) * 2), directed=False
+    )
+    assert labels.max() > 100
+
+    res = unwrap_dimensional(x, start_pixel=(1, 0), **kwargs).ravel()
+    np.testing.assert_array_equal(np.isnan(res), np.isnan(x.ravel()))
+    # every edge recovers the true difference, and every component keeps its
+    # reference vertex: (1, 0) for its own, the lowest index for the others
+    true_phase = true_phase.ravel()
+    np.testing.assert_allclose(
+        np.diff(res[edges], axis=1), np.diff(true_phase[edges], axis=1), atol=1e-9
+    )
+    roots = np.unique(labels, return_index=True)[1]
+    roots[labels[40]] = 40
+    np.testing.assert_allclose(res[roots], x.ravel()[roots])

@@ -210,9 +210,9 @@ assert np.isclose(simplex.fun, edgelist.fun)
 
 ### Missing data and disconnected graphs
 
-In `unwrap_dimensional`, pixels containing NaN are treated as missing data: they and their incident edges and cycles are dropped, and `NaN` is returned at those positions.
+`unwrap_dimensional` treats NaN pixels as missing data. It drops every edge and cycle that touches one, and the result stays NaN there. To mask out pixels, such as those with low coherence, set them to NaN.
 
-When missing pixels or disconnected graphs split the data into multiple separate components, each component is unwrapped independently. The component containing `start_pixel` (or `start_i` in `unwrap_arbitrary`) is referenced to that start point; every other component is referenced to its own first node:
+Each connected component of the graph is unwrapped on its own, whether NaNs split the grid or the graph passed to `unwrap_arbitrary` is disconnected. The component that contains `start_pixel` (or `start_i`) is referenced to it, and every other component to its lowest-numbered vertex, so the offsets between components are arbitrary multiples of the period. A pixel with no valid neighbour keeps its wrapped value:
 
 ```python
 nan_phase = wrapped.copy()

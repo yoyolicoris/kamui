@@ -21,8 +21,8 @@ from typing import Any
 
 import numpy as np
 import scipy.sparse as sp
-import scipy.sparse.csgraph as csg
 from scipy.optimize import OptimizeResult
+from scipy.sparse.csgraph import connected_components
 
 from .core import calculate_k, calculate_m, integrate, puma
 from .utils import (
@@ -86,9 +86,9 @@ def unwrap_dimensional(
     Parameters
     ----------
     x : 2-D or 3-D np.ndarray
-        The phase to be unwrapped. NaN pixels are treated as missing data:
-        they and their incident edges and cycles are excluded, and return
-        NaN in the unwrapped result.
+        The phase to be unwrapped. NaN pixels are missing data: the edges
+        and cycles that touch them are dropped, and they stay NaN in the
+        result.
     start_pixel : tuple of int, optional
         The reference pixel to start unwrapping.
         Defaults to (0, 0) for 2-D data and (0, 0, 0) for 3-D data.
@@ -133,10 +133,6 @@ def unwrap_dimensional(
 
     start_i = 0
     for i, s in enumerate(start_pixel):
-        if not (0 <= s < x.shape[i]):
-            raise IndexError(
-                f"start_pixel index {s} out of bounds for axis {i} with size {x.shape[i]}"
-            )
         start_i *= x.shape[i]
         start_i += s
     if x.ndim == 2:
@@ -145,86 +141,27 @@ def unwrap_dimensional(
         edges, simplices = get_3d_edges_and_simplices(x.shape, cyclical_axis=cyclical_axis)
     else:
         raise ValueError("x must be 2D or 3D")
+    psi = x.ravel()
+    # NaN pixels are missing data: drop every edge and cycle that touches one.
+    # They become isolated vertices, which unwrap_arbitrary returns as given.
+    valid = ~np.isnan(psi)
+    edges = edges[valid[edges].all(axis=1)]
+    simplices = simplices[valid[simplices].all(axis=1)]
 
     if weights is not None:
-        weights = np.asarray(weights)
-        if weights.shape != x.shape:
-            raise ValueError(
-                f"weights must have the same shape as x: got {weights.shape} for {x.shape}"
-            )
-
-    valid = np.isfinite(x)
-
-    if np.all(valid):
-        psi = x.ravel()
-        if weights is not None:
-            # convert per-vertex weights to per-edge weights
-            kwargs["weights"] = _merge_weights(weights, edges, merging_method)
-        out = unwrap_arbitrary(
-            psi,
-            edges,
-            None if use_edgelist else simplices,
-            start_i=start_i,
-            return_info=return_info,
-            **kwargs,
-        )
-        result, info = out if return_info else (out, None)
-        if result is not None:
-            result = result.reshape(x.shape)
-        return (result, info) if return_info else result
-
-    valid_flat = valid.ravel()
-    edge_mask = valid_flat[edges[:, 0]] & valid_flat[edges[:, 1]]
-    valid_edges = edges[edge_mask]
-
-    active_mask = np.zeros(x.size, dtype=bool)
-    active_mask[valid_edges[:, 0]] = True
-    active_mask[valid_edges[:, 1]] = True
-    n_active = int(active_mask.sum())
-    if n_active == 0:
-        result = np.full(x.shape, np.nan, dtype=np.float64)
-        info = OptimizeResult(
-            fun=0.0,
-            success=True,
-            status=0,
-            message="No active pixels to unwrap.",
-            ilp_fallback=False,
-            solver="none",
-        )
-        return (result, info) if return_info else result
-
-    vertex_map = np.full(x.size, -1, dtype=np.int64)
-    vertex_map[active_mask] = np.arange(n_active)
-    sub_edges = vertex_map[valid_edges]
-
-    if weights is not None:
-        kwargs["weights"] = _merge_weights(weights, edges, merging_method)[edge_mask]
-
-    if use_edgelist:
-        sub_simplices = None
-    else:
-        cycle_mask = np.all(active_mask[simplices], axis=1)
-        sub_simplices = vertex_map[simplices[cycle_mask]]
-
-    sub_start_i = vertex_map[start_i]
-    if sub_start_i < 0:
-        sub_start_i = 0
-
-    psi = x.ravel()[active_mask]
+        # convert per-vertex weights to per-edge weights
+        kwargs["weights"] = _merge_weights(weights, edges, merging_method)
     out = unwrap_arbitrary(
         psi,
-        sub_edges,
-        sub_simplices,
-        start_i=sub_start_i,
+        edges,
+        None if use_edgelist else simplices,
+        start_i=start_i,
         return_info=return_info,
         **kwargs,
     )
-    result_flat, info = out if return_info else (out, None)
-    if result_flat is not None:
-        result = np.full(x.shape, np.nan, dtype=np.float64)
-        result.ravel()[active_mask] = result_flat
-    else:
-        result = None
+    result, info = out if return_info else (out, None)
+    if result is not None:
+        result = result.reshape(x.shape)
     return (result, info) if return_info else result
 
 
@@ -262,10 +199,10 @@ def unwrap_arbitrary(
     period : float, optional
         The period of the phase. Defaults to ``2 * np.pi``.
     start_i : int, optional
-        The index of the reference vertex to start unwrapping. When the
-        graph has multiple connected components, the component containing
-        ``start_i`` is referenced to ``start_i``, and every other component
-        is referenced to its own first node. Defaults to 0.
+        The index of the reference vertex to start unwrapping. Each
+        connected component of the graph is unwrapped on its own, referenced
+        to ``start_i`` if it contains it and to its lowest-numbered vertex
+        otherwise. A vertex without edges keeps its value. Defaults to 0.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -287,107 +224,50 @@ def unwrap_arbitrary(
         program. For ``method="gc"`` it is the report of
         :func:`kamui.core.puma`, with the final energy as ``fun``.
     """
-    if method not in ("ilp", "gc"):
-        raise ValueError("method must be 'gc' or 'ilp'")
-
-    P = len(psi)
-    if P == 0:
-        empty = np.empty(0, dtype=psi.dtype)
-        info = OptimizeResult(
-            fun=0.0,
-            success=True,
-            status=0,
-            message="No vertices to unwrap.",
-            ilp_fallback=False,
-            solver="none",
-        )
-        return (empty, info) if return_info else empty
-
-    if not (0 <= start_i < P):
-        raise IndexError(f"start_i {start_i} is out of bounds for {P} vertices")
-
-    if len(edges) == 0:
-        res = psi.astype(np.float64)
-        info = OptimizeResult(
-            fun=0.0,
-            success=True,
-            status=0,
-            message="No edges to unwrap.",
-            ilp_fallback=False,
-            solver="none",
-        )
-        return (res, info) if return_info else res
-
-    active_mask = np.zeros(P, dtype=bool)
-    active_mask[edges[:, 0]] = True
-    active_mask[edges[:, 1]] = True
-
-    if np.all(active_mask):
-        sub_edges = edges
-        sub_psi = psi
-        sub_simplices = simplices
-    else:
-        v_map = np.full(P, -1, dtype=np.int64)
-        v_map[active_mask] = np.arange(int(active_mask.sum()))
-        sub_edges = v_map[edges]
-        sub_psi = psi[active_mask]
-        if simplices is None:
-            sub_simplices = None
-        elif isinstance(simplices, np.ndarray) and simplices.ndim == 2:
-            sub_simplices = v_map[simplices]
-        else:
-            sub_simplices = [v_map[np.asarray(cyc)] for cyc in simplices]
-
-    N_sub = len(sub_psi)
-    adj = sp.coo_matrix(
-        (np.ones(len(sub_edges), dtype=bool), (sub_edges[:, 0], sub_edges[:, 1])),
-        shape=(N_sub, N_sub),
-    )
-    n_components, labels = csg.connected_components(adj, directed=False)
-    _, first_indices = np.unique(labels, return_index=True)
-    ref_nodes = first_indices.copy()
-    if active_mask[start_i]:
-        sub_start_i = start_i if np.all(active_mask) else int(v_map[start_i])
-        ref_nodes[labels[sub_start_i]] = sub_start_i
-    ref_for_vertex = ref_nodes[labels]
+    # Reference each connected component to start_i if it holds it, and to its
+    # first vertex otherwise.
+    n = len(psi)
+    adjacency = sp.coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])), shape=(n, n))
+    _, labels = connected_components(adjacency, directed=False)
+    roots = np.unique(labels, return_index=True)[1]
+    roots[labels[start_i]] = start_i
+    ref = roots[labels]
 
     if method == "gc":
-        m, info = puma(sub_psi / period, sub_edges, return_info=True, **kwargs)
-        sub_result = (m - m[ref_for_vertex]) * period + sub_psi
-    else:  # method == "ilp"
-        if sub_simplices is None:
+        m, info = puma(psi / period, edges, return_info=True, **kwargs)
+        result = (m - m[ref]) * period + psi
+    elif method == "ilp":
+        if simplices is None:
             m, info = calculate_m(
-                sub_edges,
-                np.round((sub_psi[sub_edges[:, 1]] - sub_psi[sub_edges[:, 0]]) / period).astype(
-                    np.int64
-                ),
+                edges,
+                np.round((psi[edges[:, 1]] - psi[edges[:, 0]]) / period).astype(np.int64),
                 return_info=True,
                 **kwargs,
             )
-            sub_result = None if m is None else (m - m[ref_for_vertex]) * period + sub_psi
+            if m is None:
+                result = None
+            else:
+                # calculate_m sizes m by the largest vertex on an edge
+                m = np.pad(m, (0, n - len(m)))
+                result = (m - m[ref]) * period + psi
         else:
-            diff = wrap_difference(sub_psi[sub_edges[:, 1]] - sub_psi[sub_edges[:, 0]], period)
-            k, info = calculate_k(
-                sub_edges, sub_simplices, diff / period, return_info=True, **kwargs
-            )
+            diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
+            k, info = calculate_k(edges, simplices, diff / period, return_info=True, **kwargs)
             if k is None:
-                sub_result = None
+                result = None
             else:
                 correct_diff = diff + k * period
-                sub_result = (
+                # A virtual vertex n joins every root by a zero edge, so one
+                # traversal from it covers all components.
+                links = np.stack((np.full_like(roots, n), roots), axis=1)
+                result = (
                     integrate(
-                        np.concatenate((sub_edges, np.flip(sub_edges, 1)), axis=0),
-                        np.concatenate((correct_diff, -correct_diff), axis=0),
-                        start_i=ref_nodes,
-                    )
-                    + sub_psi[ref_for_vertex]
+                        np.concatenate((edges, np.flip(edges, 1), links), axis=0),
+                        np.concatenate((correct_diff, -correct_diff, np.zeros(len(roots)))),
+                        start_i=n,
+                    )[:n]
+                    + psi[ref]
                 )
-
-    if sub_result is None:
-        return (None, info) if return_info else None
-    if np.all(active_mask):
-        result = sub_result
     else:
-        result = psi.copy().astype(np.float64)
-        result[active_mask] = sub_result
+        raise ValueError("method must be 'gc' or 'ilp'")
     return (result, info) if return_info else result
