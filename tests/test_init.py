@@ -48,33 +48,33 @@ def _ramp_2d(n=6, m=6):
 
 
 def test_unwrap_dimensional_2d():
-    true = _ramp_2d()
-    result = unwrap_dimensional(wrap_difference(true))
+    true_phase = _ramp_2d()
+    result = unwrap_dimensional(wrap_difference(true_phase))
     assert result is not None
-    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+    np.testing.assert_allclose(result - result[0, 0], true_phase - true_phase[0, 0], atol=1e-6)
 
 
 def test_unwrap_dimensional_edgelist():
-    true = _ramp_2d(5, 5)
-    result = unwrap_dimensional(wrap_difference(true), use_edgelist=True)
+    true_phase = _ramp_2d(5, 5)
+    result = unwrap_dimensional(wrap_difference(true_phase), use_edgelist=True)
     assert result is not None
-    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+    np.testing.assert_allclose(result - result[0, 0], true_phase - true_phase[0, 0], atol=1e-6)
 
 
 def test_unwrap_dimensional_weights_and_start_pixel():
-    true = _ramp_2d()
-    weights = np.linspace(0.5, 1.0, true.size).reshape(true.shape)
-    result = unwrap_dimensional(wrap_difference(true), start_pixel=(2, 3), weights=weights)
+    true_phase = _ramp_2d()
+    weights = np.linspace(0.5, 1.0, true_phase.size).reshape(true_phase.shape)
+    result = unwrap_dimensional(wrap_difference(true_phase), start_pixel=(2, 3), weights=weights)
     assert result is not None
-    np.testing.assert_allclose(result - result[2, 3], true - true[2, 3], atol=1e-6)
+    np.testing.assert_allclose(result - result[2, 3], true_phase - true_phase[2, 3], atol=1e-6)
 
 
 @pytest.mark.parametrize("use_edgelist", [False, True])
 def test_unwrap_dimensional_integer_weights_reach_lemon(use_edgelist):
     rng = np.random.default_rng(4)
-    true = _ramp_2d(12, 12) + rng.normal(0, 1.3, (12, 12))
-    coherence = rng.uniform(0.2, 1.0, true.shape)
-    wrapped = wrap_difference(true)
+    true_phase = _ramp_2d(12, 12) + rng.normal(0, 1.3, (12, 12))
+    coherence = rng.uniform(0.2, 1.0, true_phase.shape)
+    wrapped = wrap_difference(true_phase)
     # fractional weights go to HiGHS, and raise with solver="lemon"
     _, info = unwrap_dimensional(
         wrapped, weights=coherence, use_edgelist=use_edgelist, return_info=True
@@ -98,31 +98,33 @@ def test_unwrap_dimensional_integer_weights_reach_lemon(use_edgelist):
 def test_unwrap_dimensional_cyclical():
     n, m = 6, 8
     ii, jj = np.mgrid[0:n, 0:m]
-    true = 2.5 * np.sin(2 * np.pi * ii / n) + 0.4 * jj
-    result = unwrap_dimensional(wrap_difference(true), cyclical_axis=0)
+    true_phase = 2.5 * np.sin(2 * np.pi * ii / n) + 0.4 * jj
+    result = unwrap_dimensional(wrap_difference(true_phase), cyclical_axis=0)
     assert result is not None
-    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+    np.testing.assert_allclose(result - result[0, 0], true_phase - true_phase[0, 0], atol=1e-6)
 
 
 def test_unwrap_dimensional_3d():
     n = 3
     zz, yy, xx = np.mgrid[0:n, 0:n, 0:n]
-    true = 1.2 * (xx + yy + zz)
-    result = unwrap_dimensional(wrap_difference(true))
+    true_phase = 1.2 * (xx + yy + zz)
+    result = unwrap_dimensional(wrap_difference(true_phase))
     assert result is not None
-    np.testing.assert_allclose(result - result[0, 0, 0], true - true[0, 0, 0], atol=1e-6)
+    np.testing.assert_allclose(
+        result - result[0, 0, 0], true_phase - true_phase[0, 0, 0], atol=1e-6
+    )
 
 
 def test_unwrap_dimensional_gc():
-    true = _ramp_2d()
-    result = unwrap_dimensional(wrap_difference(true), method="gc")
+    true_phase = _ramp_2d()
+    result = unwrap_dimensional(wrap_difference(true_phase), method="gc")
     assert result is not None
-    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+    np.testing.assert_allclose(result - result[0, 0], true_phase - true_phase[0, 0], atol=1e-6)
 
 
 def test_unwrap_dimensional_gc_weights(monkeypatch):
-    true = _ramp_2d()
-    weights = np.linspace(0.1, 1.0, true.size).reshape(true.shape)
+    true_phase = _ramp_2d()
+    weights = np.linspace(0.1, 1.0, true_phase.size).reshape(true_phase.shape)
     captured = {}
     orig_puma = kamui.puma
 
@@ -132,24 +134,26 @@ def test_unwrap_dimensional_gc_weights(monkeypatch):
 
     monkeypatch.setattr(kamui, "puma", mock_puma)
     result, info = unwrap_dimensional(
-        wrap_difference(true), method="gc", weights=weights, return_info=True
+        wrap_difference(true_phase), method="gc", weights=weights, return_info=True
     )
     assert result is not None
     assert info.success and info.nit >= 1
     assert "weights" in captured
-    edges, _ = get_2d_edges_and_simplices(true.shape)
+    edges, _ = get_2d_edges_and_simplices(true_phase.shape)
     expected = _merge_weights(weights, edges, "sum")
     np.testing.assert_array_equal(captured["weights"], expected)
-    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+    np.testing.assert_allclose(result - result[0, 0], true_phase - true_phase[0, 0], atol=1e-6)
 
 
 def test_unwrap_dimensional_3d_ramp_on_larger_grid():
     # 10x10x10 is large enough for consecutive voxels in the traversal order
     # not to be adjacent, which broke integrate before #22
     zz, yy, xx = np.mgrid[0:10, 0:10, 0:10]
-    true = 1.3 * zz + 0.9 * yy - 1.1 * xx
-    result = unwrap_dimensional(wrap_difference(true))
-    np.testing.assert_allclose(result - result[0, 0, 0], true - true[0, 0, 0], atol=1e-6)
+    true_phase = 1.3 * zz + 0.9 * yy - 1.1 * xx
+    result = unwrap_dimensional(wrap_difference(true_phase))
+    np.testing.assert_allclose(
+        result - result[0, 0, 0], true_phase - true_phase[0, 0, 0], atol=1e-6
+    )
 
 
 def test_unwrap_dimensional_rejects_mismatched_start_pixel():
@@ -175,11 +179,11 @@ def test_unwrap_arbitrary_ilp_with_simplices():
 
 
 def test_unwrap_arbitrary_ilp_edgelist():
-    true = np.array([0.0, 2.0, 4.0, 6.0])
-    psi = wrap_difference(true)
+    true_phase = np.array([0.0, 2.0, 4.0, 6.0])
+    psi = wrap_difference(true_phase)
     edges = np.array([[0, 1], [1, 2], [2, 3]])
     result = unwrap_arbitrary(psi, edges, None)
-    np.testing.assert_allclose(result, true, atol=1e-9)
+    np.testing.assert_allclose(result, true_phase, atol=1e-9)
 
 
 def test_unwrap_arbitrary_ilp_edgelist_infeasible(monkeypatch):
@@ -219,11 +223,11 @@ def test_unwrap_arbitrary_point_cloud_is_exact_in_any_order():
     points = _jittered_point_cloud(rng)
     for order in (np.arange(len(points)), rng.permutation(len(points))):
         p = points[order]
-        true = 3 * p[:, 0] - 2 * p[:, 1]
-        psi = wrap_difference(true)
+        true_phase = 3 * p[:, 0] - 2 * p[:, 1]
+        psi = wrap_difference(true_phase)
         edges, simplices = _delaunay_graph(p)
         result = unwrap_arbitrary(psi, edges, simplices)
-        np.testing.assert_allclose(result - result[0], true - true[0], atol=1e-6)
+        np.testing.assert_allclose(result - result[0], true_phase - true_phase[0], atol=1e-6)
 
 
 def test_unwrap_arbitrary_reports_matching_costs_on_both_ilp_paths():
@@ -231,8 +235,8 @@ def test_unwrap_arbitrary_reports_matching_costs_on_both_ilp_paths():
     # same cost over the same corrections, so their optima must agree
     # (the comparison asked for in #9).
     rng = np.random.default_rng(3)
-    true = _ramp_2d(12, 12) + rng.normal(0, 1.3, (12, 12))
-    psi = wrap_difference(true).ravel()
+    true_phase = _ramp_2d(12, 12) + rng.normal(0, 1.3, (12, 12))
+    psi = wrap_difference(true_phase).ravel()
     edges, simplices = get_2d_edges_and_simplices((12, 12))
     with_cycles, info_k = unwrap_arbitrary(
         psi, edges, simplices, weights=np.ones(len(edges)), return_info=True
@@ -262,11 +266,11 @@ def test_unwrap_arbitrary_gc_reports_energy():
 
 
 def test_unwrap_dimensional_reports_info():
-    true = _ramp_2d()
-    result, info = unwrap_dimensional(wrap_difference(true), return_info=True)
-    assert result.shape == true.shape
+    true_phase = _ramp_2d()
+    result, info = unwrap_dimensional(wrap_difference(true_phase), return_info=True)
+    assert result.shape == true_phase.shape
     assert info.success and not info.ilp_fallback
-    np.testing.assert_allclose(result - result[0, 0], true - true[0, 0], atol=1e-6)
+    np.testing.assert_allclose(result - result[0, 0], true_phase - true_phase[0, 0], atol=1e-6)
 
 
 def test_unwrap_dimensional_reports_failure(monkeypatch):
