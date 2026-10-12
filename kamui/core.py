@@ -315,8 +315,8 @@ def _cycle_matrix(edges: np.ndarray, simplices: Iterable[Iterable[int]]) -> sp.c
 def _check_edges_once(edges: np.ndarray) -> None:
     """Raise ValueError if an edge appears twice, in the same or the opposite direction.
 
-    A self-loop is its own reverse and passes. The pattern matrix is local,
-    so its memory is freed before the caller builds anything large.
+    A self-loop is its own reverse and passes. Keeping the pattern matrix
+    local frees it before :func:`integrate` builds its weighted graph.
     """
     N = int(np.max(edges, initial=-1)) + 1
     S = sp.csr_matrix((np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])), shape=(N, N))
@@ -351,9 +351,7 @@ def integrate(edges: np.ndarray, weights: np.ndarray, start_i: int = 0) -> np.nd
         If an edge appears twice, in the same or the opposite direction
         (other than a self-loop), which would count its difference twice.
     """
-    # Edges in both directions, as integrate took them before v0.4, would
-    # silently double the differences read below.
-    _check_edges_once(edges)
+    _check_edges_once(edges)  # a repeated edge would be counted twice below
     N = int(edges.max()) + 1
     G = sp.csr_matrix((weights, (edges[:, 0], edges[:, 1])), shape=(N, N))
     # Any spanning tree gives the same sums when the weights are consistent

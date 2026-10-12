@@ -300,8 +300,8 @@ def test_unwrap_arbitrary_gc_with_weights():
 
 @pytest.mark.parametrize("extra", [[1, 0], [0, 1]])
 def test_unwrap_arbitrary_rejects_repeated_edges_before_solving(monkeypatch, extra):
-    # dev summed both copies of such an edge in integrate and returned a wrong
-    # phase; now the simplex path refuses them before calling the solver
+    # integrate would count a repeated edge twice, so the simplex path must
+    # refuse it before running the solver
     edges = np.array([[0, 1], [1, 2], [2, 3], [3, 0], extra])
     monkeypatch.setattr(kamui, "calculate_k", lambda *a, **k: pytest.fail("solver ran"))
     with pytest.raises(ValueError, match="each edge once"):
