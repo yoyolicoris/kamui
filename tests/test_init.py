@@ -299,3 +299,172 @@ def test_unwrap_arbitrary_gc_with_weights():
 def test_unwrap_arbitrary_rejects_bad_method():
     with pytest.raises(ValueError, match="method must be"):
         unwrap_arbitrary(np.zeros(2), np.array([[0, 1]]), method="bad")
+
+
+@pytest.mark.parametrize("method", ["ilp", "gc"])
+def test_unwrap_arbitrary_disconnected_components(method):
+    true_phase = np.r_[np.arange(5) * 2.0, 50 + np.arange(5) * 2.0]
+    psi = wrap_difference(true_phase)
+    edges = np.array([[0, 1], [1, 2], [2, 3], [3, 4], [5, 6], [6, 7], [7, 8], [8, 9]])
+
+    # simplex path (for ILP) and default GC
+    simplices = [] if method == "ilp" else None
+    res = unwrap_arbitrary(psi, edges, simplices=simplices, method=method, start_i=0)
+    assert res is not None
+    np.testing.assert_allclose(np.diff(res[:5]), 2.0, atol=1e-9)
+    np.testing.assert_allclose(np.diff(res[5:]), 2.0, atol=1e-9)
+    np.testing.assert_allclose(res[0], psi[0], atol=1e-9)
+    np.testing.assert_allclose(res[5], psi[5], atol=1e-9)
+
+    # edgelist path (for ILP)
+    if method == "ilp":
+        res_m = unwrap_arbitrary(psi, edges, simplices=None, method="ilp", start_i=0)
+        assert res_m is not None
+        np.testing.assert_allclose(np.diff(res_m[:5]), 2.0, atol=1e-9)
+        np.testing.assert_allclose(np.diff(res_m[5:]), 2.0, atol=1e-9)
+        np.testing.assert_allclose(res_m[0], psi[0], atol=1e-9)
+        np.testing.assert_allclose(res_m[5], psi[5], atol=1e-9)
+
+    # start_i in the second component (start_i=7)
+    res_start7 = unwrap_arbitrary(psi, edges, simplices=simplices, method=method, start_i=7)
+    assert res_start7 is not None
+    np.testing.assert_allclose(np.diff(res_start7[:5]), 2.0, atol=1e-9)
+    np.testing.assert_allclose(np.diff(res_start7[5:]), 2.0, atol=1e-9)
+    np.testing.assert_allclose(res_start7[0], psi[0], atol=1e-9)
+    np.testing.assert_allclose(res_start7[7], psi[7], atol=1e-9)
+
+
+def test_unwrap_arbitrary_empty_inputs():
+    empty_psi = np.empty(0, dtype=np.float64)
+    empty_edges = np.empty((0, 2), dtype=np.int64)
+    res = unwrap_arbitrary(empty_psi, empty_edges)
+    assert res.shape == (0,)
+    res, info = unwrap_arbitrary(empty_psi, empty_edges, return_info=True)
+    assert res.shape == (0,)
+    assert info.success
+
+
+def test_unwrap_arbitrary_isolated_vertices():
+    psi = np.array([0.5, 1.2, -0.8])
+    empty_edges = np.empty((0, 2), dtype=np.int64)
+    res = unwrap_arbitrary(psi, empty_edges)
+    np.testing.assert_allclose(res, psi, atol=1e-9)
+
+    # also with method="gc"
+    res_gc = unwrap_arbitrary(psi, empty_edges, method="gc")
+    np.testing.assert_allclose(res_gc, psi, atol=1e-9)
+
+
+def test_unwrap_arbitrary_start_i_out_of_bounds():
+    with pytest.raises(IndexError, match="out of bounds"):
+        unwrap_arbitrary(np.zeros(3), np.array([[0, 1]]), start_i=5)
+    with pytest.raises(IndexError, match="out of bounds"):
+        unwrap_arbitrary(np.zeros(3), np.array([[0, 1]]), start_i=-1)
+
+
+@pytest.mark.parametrize("use_edgelist", [False, True])
+@pytest.mark.parametrize("method", ["ilp", "gc"])
+def test_unwrap_dimensional_nan_grid_2d(use_edgelist, method):
+    n = 8
+    g = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    true_phase = 1.2 * g[0] + 0.8 * g[1]
+    wrapped = wrap_difference(true_phase)
+    wrapped[:, 3:5] = np.nan
+
+    unwrapped = unwrap_dimensional(wrapped, use_edgelist=use_edgelist, method=method)
+    assert unwrapped.shape == (n, n)
+    assert np.isnan(unwrapped).sum() == 16
+    np.testing.assert_allclose(
+        np.diff(unwrapped[:, :3], axis=1), np.diff(true_phase[:, :3], axis=1), atol=1e-9
+    )
+    np.testing.assert_allclose(
+        np.diff(unwrapped[:, 5:], axis=1), np.diff(true_phase[:, 5:], axis=1), atol=1e-9
+    )
+
+
+def test_unwrap_dimensional_explicit_mask():
+    true_phase = _ramp_2d()
+    wrapped = wrap_difference(true_phase)
+    mask = np.zeros(wrapped.shape, dtype=bool)
+    mask[2:6, :] = True
+
+    unwrapped = unwrap_dimensional(wrapped, mask=mask)
+    assert np.isnan(unwrapped[2:6, :]).all()
+    assert not np.isnan(unwrapped[:2, :]).any()
+    assert not np.isnan(unwrapped[6:, :]).any()
+    np.testing.assert_allclose(
+        np.diff(unwrapped[:2, :], axis=0), np.diff(true_phase[:2, :], axis=0), atol=1e-9
+    )
+
+
+def test_unwrap_dimensional_all_masked_or_nan():
+    x = np.full((6, 6), np.nan)
+    res = unwrap_dimensional(x)
+    assert np.isnan(res).all()
+    res, info = unwrap_dimensional(x, return_info=True)
+    assert np.isnan(res).all()
+    assert info.success and info.solver == "none"
+
+    # with explicit mask
+    x_finite = np.zeros((4, 4))
+    mask = np.ones((4, 4), dtype=bool)
+    res_m = unwrap_dimensional(x_finite, mask=mask)
+    assert np.isnan(res_m).all()
+
+
+def test_unwrap_dimensional_masked_start_pixel():
+    true_phase = _ramp_2d()
+    wrapped = wrap_difference(true_phase)
+    wrapped[0, 0] = np.nan
+    # start_pixel (0, 0) is NaN; unwrapper should fall back to first valid node
+    unwrapped = unwrap_dimensional(wrapped, start_pixel=(0, 0))
+    assert np.isnan(unwrapped[0, 0])
+    assert not np.isnan(unwrapped[1:, 1:]).any()
+
+
+def test_unwrap_dimensional_start_pixel_out_of_bounds():
+    with pytest.raises(IndexError, match="out of bounds"):
+        unwrap_dimensional(np.zeros((4, 4)), start_pixel=(10, 0))
+
+
+def test_unwrap_dimensional_rejects_bad_shapes():
+    x = np.zeros((4, 4))
+    with pytest.raises(ValueError, match="weights must have the same shape"):
+        unwrap_dimensional(x, weights=np.zeros((3, 3)))
+    with pytest.raises(ValueError, match="mask must have the same shape"):
+        unwrap_dimensional(x, mask=np.zeros((3, 3), dtype=bool))
+
+
+def test_unwrap_dimensional_with_nan_weights_and_nans():
+    true_phase = _ramp_2d()
+    wrapped = wrap_difference(true_phase)
+    wrapped[4:, :] = np.nan
+    weights = np.ones(wrapped.shape)
+    weights[0, 0] = np.nan  # NaN weight should become 0 weight on incident edges
+    unwrapped = unwrap_dimensional(wrapped, weights=weights)
+    assert np.isnan(unwrapped[4:, :]).all()
+    assert not np.isnan(unwrapped[:4, :]).any()
+
+
+def test_unwrap_dimensional_nan_grid_3d():
+    z, y, x = np.mgrid[0:6, 0:6, 0:6]
+    true_volume = 0.4 * x + 0.3 * y - 0.35 * z
+    wrapped = wrap_difference(true_volume)
+    wrapped[2:4, :, :] = np.nan
+
+    unwrapped = unwrap_dimensional(wrapped)
+    assert unwrapped.shape == wrapped.shape
+    assert np.isnan(unwrapped).sum() == 2 * 6 * 6
+    np.testing.assert_allclose(
+        np.diff(unwrapped[:2], axis=2), np.diff(true_volume[:2], axis=2), atol=1e-9
+    )
+    np.testing.assert_allclose(
+        np.diff(unwrapped[4:], axis=2), np.diff(true_volume[4:], axis=2), atol=1e-9
+    )
+
+
+def test_unwrap_dimensional_masked_failure(monkeypatch):
+    monkeypatch.setattr(kamui, "unwrap_arbitrary", lambda *a, **k: None)
+    x = np.zeros((4, 4))
+    x[0, 0] = np.nan
+    assert unwrap_dimensional(x) is None

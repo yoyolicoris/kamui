@@ -20,6 +20,8 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.csgraph as csg
 from scipy.optimize import OptimizeResult
 
 from .core import calculate_k, calculate_m, integrate, puma
@@ -75,6 +77,7 @@ def unwrap_dimensional(
     cyclical_axis: int | tuple[int, ...] = (),
     merging_method: str = "sum",
     weights: np.ndarray | None = None,
+    mask: np.ndarray | None = None,
     *,
     return_info: bool = False,
     **kwargs: Any,
@@ -105,6 +108,12 @@ def unwrap_dimensional(
         fractional ones go to HiGHS. For the rescaled weights of
         :func:`kamui.prepare_weights`, pass its result to
         :func:`kamui.unwrap_arbitrary` instead. Defaults to None.
+    mask : np.ndarray, optional
+        Boolean mask of the same shape as x indicating pixels to ignore
+        (True marks invalid or missing pixels). Missing pixels, as well as
+        any pixels containing NaN in x, are excluded along with incident
+        edges and cycles, and return NaN in the unwrapped result.
+        Defaults to None.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -129,6 +138,10 @@ def unwrap_dimensional(
 
     start_i = 0
     for i, s in enumerate(start_pixel):
+        if not (0 <= s < x.shape[i]):
+            raise IndexError(
+                f"start_pixel index {s} out of bounds for axis {i} with size {x.shape[i]}"
+            )
         start_i *= x.shape[i]
         start_i += s
     if x.ndim == 2:
@@ -137,22 +150,88 @@ def unwrap_dimensional(
         edges, simplices = get_3d_edges_and_simplices(x.shape, cyclical_axis=cyclical_axis)
     else:
         raise ValueError("x must be 2D or 3D")
-    psi = x.ravel()
 
     if weights is not None:
-        # convert per-vertex weights to per-edge weights
-        kwargs["weights"] = _merge_weights(weights, edges, merging_method)
+        weights = np.asarray(weights)
+        if weights.shape != x.shape:
+            raise ValueError(
+                f"weights must have the same shape as x: got {weights.shape} for {x.shape}"
+            )
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != x.shape:
+            raise ValueError(f"mask must have the same shape as x: got {mask.shape} for {x.shape}")
+
+    valid = np.isfinite(x)
+    if mask is not None:
+        valid &= ~mask
+
+    if np.all(valid):
+        psi = x.ravel()
+        if weights is not None:
+            # convert per-vertex weights to per-edge weights
+            kwargs["weights"] = _merge_weights(weights, edges, merging_method)
+        out = unwrap_arbitrary(
+            psi,
+            edges,
+            None if use_edgelist else simplices,
+            start_i=start_i,
+            return_info=return_info,
+            **kwargs,
+        )
+        result, info = out if return_info else (out, None)
+        if result is not None:
+            result = result.reshape(x.shape)
+        return (result, info) if return_info else result
+
+    valid_flat = valid.ravel()
+    n_valid = int(valid_flat.sum())
+    if n_valid == 0:
+        result = np.full(x.shape, np.nan, dtype=np.float64)
+        info = OptimizeResult(
+            fun=0.0,
+            success=True,
+            status=0,
+            message="All pixels masked.",
+            ilp_fallback=False,
+            solver="none",
+        )
+        return (result, info) if return_info else result
+
+    vertex_map = np.full(x.size, -1, dtype=np.int64)
+    vertex_map[valid_flat] = np.arange(n_valid)
+
+    edge_mask = valid_flat[edges[:, 0]] & valid_flat[edges[:, 1]]
+    sub_edges = vertex_map[edges[edge_mask]]
+
+    if weights is not None:
+        kwargs["weights"] = _merge_weights(weights, edges, merging_method)[edge_mask]
+
+    if use_edgelist:
+        sub_simplices = None
+    else:
+        cycle_mask = np.all(valid_flat[simplices], axis=1)
+        sub_simplices = vertex_map[simplices[cycle_mask]]
+
+    sub_start_i = vertex_map[start_i]
+    if sub_start_i < 0:
+        sub_start_i = 0
+
+    psi = x.ravel()[valid_flat]
     out = unwrap_arbitrary(
         psi,
-        edges,
-        None if use_edgelist else simplices,
-        start_i=start_i,
+        sub_edges,
+        sub_simplices,
+        start_i=sub_start_i,
         return_info=return_info,
         **kwargs,
     )
-    result, info = out if return_info else (out, None)
-    if result is not None:
-        result = result.reshape(x.shape)
+    result_flat, info = out if return_info else (out, None)
+    if result_flat is not None:
+        result = np.full(x.shape, np.nan, dtype=np.float64)
+        result.ravel()[valid_flat] = result_flat
+    else:
+        result = None
     return (result, info) if return_info else result
 
 
@@ -190,7 +269,10 @@ def unwrap_arbitrary(
     period : float, optional
         The period of the phase. Defaults to ``2 * np.pi``.
     start_i : int, optional
-        The index of the reference vertex to start unwrapping. Defaults to 0.
+        The index of the reference vertex to start unwrapping. When the
+        graph has multiple connected components, the component containing
+        ``start_i`` is referenced to ``start_i``, and every other component
+        is referenced to its own first node. Defaults to 0.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -212,18 +294,52 @@ def unwrap_arbitrary(
         program. For ``method="gc"`` it is the report of
         :func:`kamui.core.puma`, with the final energy as ``fun``.
     """
+    if method not in ("ilp", "gc"):
+        raise ValueError("method must be 'gc' or 'ilp'")
+
+    P = len(psi)
+    if P == 0:
+        empty = np.empty(0, dtype=psi.dtype)
+        info = OptimizeResult(
+            fun=0.0,
+            success=True,
+            status=0,
+            message="No vertices to unwrap.",
+            ilp_fallback=False,
+            solver="none",
+        )
+        return (empty, info) if return_info else empty
+
+    if not (0 <= start_i < P):
+        raise IndexError(f"start_i {start_i} is out of bounds for {P} vertices")
+
+    if len(edges) == 0:
+        ref_nodes = np.arange(P)
+        ref_for_vertex = np.arange(P)
+    else:
+        adj = sp.coo_matrix(
+            (np.ones(len(edges), dtype=bool), (edges[:, 0], edges[:, 1])),
+            shape=(P, P),
+        )
+        n_components, labels = csg.connected_components(adj, directed=False)
+        _, first_indices = np.unique(labels, return_index=True)
+        ref_nodes = first_indices.copy()
+        ref_nodes[labels[start_i]] = start_i
+        ref_for_vertex = ref_nodes[labels]
+
     if method == "gc":
         m, info = puma(psi / period, edges, return_info=True, **kwargs)
-        result = (m - m[start_i]) * period + psi
-    elif method == "ilp":
+        result = (m - m[ref_for_vertex]) * period + psi
+    else:  # method == "ilp"
         if simplices is None:
             m, info = calculate_m(
                 edges,
                 np.round((psi[edges[:, 1]] - psi[edges[:, 0]]) / period).astype(np.int64),
                 return_info=True,
+                n_nodes=P,
                 **kwargs,
             )
-            result = None if m is None else (m - m[start_i]) * period + psi
+            result = None if m is None else (m - m[ref_for_vertex]) * period + psi
         else:
             diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
             k, info = calculate_k(edges, simplices, diff / period, return_info=True, **kwargs)
@@ -235,10 +351,9 @@ def unwrap_arbitrary(
                     integrate(
                         np.concatenate((edges, np.flip(edges, 1)), axis=0),
                         np.concatenate((correct_diff, -correct_diff), axis=0),
-                        start_i=start_i,
+                        start_i=ref_nodes,
+                        n_nodes=P,
                     )
-                    + psi[start_i]
+                    + psi[ref_for_vertex]
                 )
-    else:
-        raise ValueError("method must be 'gc' or 'ilp'")
     return (result, info) if return_info else result

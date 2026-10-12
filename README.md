@@ -208,9 +208,20 @@ _, edgelist = kamui.unwrap_arbitrary(noisy.ravel(), edges, return_info=True)
 assert np.isclose(simplex.fun, edgelist.fun)
 ```
 
-### Missing data
+### Missing data and disconnected graphs
 
-Kamui expects a single connected graph with finite phase values. NaNs, or regions cut off from the reference point, currently give wrong results ([#23](https://github.com/yoyolicoris/kamui/issues/23)). Until that is fixed, drop invalid pixels and unwrap each connected region on its own with `unwrap_arbitrary`.
+In `unwrap_dimensional`, pixels containing NaN, or pixels marked with an optional boolean `mask` (`mask=True` to ignore), are treated as missing data: they and their incident edges and cycles are dropped, and `NaN` is returned at those positions.
+
+When missing pixels or disconnected graphs split the data into multiple separate components, each component is unwrapped independently. The component containing `start_pixel` (or `start_i` in `unwrap_arbitrary`) is referenced to that start point; every other component is referenced to its own first node:
+
+```python
+masked_phase = wrapped.copy()
+masked_phase[40:60, :] = np.nan
+
+unwrapped_masked = kamui.unwrap_dimensional(masked_phase)
+assert np.isnan(unwrapped_masked[50, 0])
+assert not np.isnan(unwrapped_masked[10, 0])
+```
 
 ## Performance and memory
 
@@ -236,7 +247,7 @@ If unwrapping is unexpectedly slow, check your SciPy build. On macOS (Apple Sili
 
 ## Roadmap
 
-- [ ] Missing data and disconnected graphs ([#23](https://github.com/yoyolicoris/kamui/issues/23))
+- [x] Missing data and disconnected graphs ([#23](https://github.com/yoyolicoris/kamui/issues/23))
 - [x] Lower memory use on large scenes ([#24](https://github.com/yoyolicoris/kamui/issues/24))
 - [x] A min-cost-flow solver for 2-D and planar data ([#25](https://github.com/yoyolicoris/kamui/issues/25))
 - [x] Faster PUMA ([#26](https://github.com/yoyolicoris/kamui/issues/26))

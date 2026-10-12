@@ -29,8 +29,8 @@ CI runs Pixi with `locked: true`. After editing `pixi.toml`, run `pixi install` 
 The package has three modules.
 
 - **`kamui/__init__.py`** holds the public entry points.
-  - `unwrap_dimensional` builds the grid graph (cycles as an `(S, 4)` array), turns per-pixel `weights` into per-edge weights with `utils._merge_weights` (sum of the two pixels by default, used as given without rescaling, NaN → 0), and hands off to `unwrap_arbitrary`.
-  - `unwrap_arbitrary` picks the solver:
+  - `unwrap_dimensional` builds the grid graph (cycles as an `(S, 4)` array), drops NaN pixels and explicitly masked pixels (`mask`) along with incident edges and cycles, turns per-pixel `weights` into per-edge weights with `utils._merge_weights` (sum of the two pixels by default, used as given without rescaling, NaN → 0), hands off to `unwrap_arbitrary`, and embeds unwrapped values back with NaN at invalid pixels.
+  - `unwrap_arbitrary` partitions the graph into connected components with `scipy.sparse.csgraph.connected_components`. Each component is referenced to `start_i` (if contained) or its own first node, and it picks the solver:
     - `method="ilp"` with simplices: the simplex ILP (`calculate_k`).
     - `method="ilp"` without simplices: the edgelist ILP (`calculate_m`).
     - `method="gc"`: PUMA (`puma`).
@@ -43,7 +43,7 @@ The package has three modules.
   - On the HiGHS path, both go through `_solve_integer_program`. It solves the LP relaxation (`scipy.optimize.linprog`) and re-solves with `integrality=1` only if the LP optimum is fractional; the `ilp_fallback` flag records when that happened.
   - Integer dtypes: int64 for anything computed with (edge codes `u·n + v`, costs, supplies, flows, `k`, `m`), int32 only where pylmcf takes LEMON's int32 index type (arcs and their sort order), and int8 for `V`'s ±1 entries while every cycle is shorter than 128 steps. Let SciPy choose sparse index dtypes.
   - pylmcf requires arcs sorted by (start, end) and non-negative int64 costs. `_sorted_graph` sorts the arcs with one argsort and the helpers map flows back. LEMON's int64 sums limit weights to a total below 2**61.
-  - `integrate` recovers the phase. `unwrap_arbitrary` passes it each edge in both directions; it accumulates the corrected differences along a BFS spanning tree, with pointer jumping. Accumulating in DFS visit order was a past bug (#22).
+  - `integrate` recovers the phase. `unwrap_arbitrary` passes it each edge in both directions and root nodes per connected component; it accumulates the corrected differences along BFS spanning trees, with pointer jumping. Accumulating in DFS visit order was a past bug (#22).
   - `puma` needs the optional `PyMaxflow`. The `extra` extra installs it, and it is always present in the test environments. It minimizes a weighted p-norm energy using graph cuts with coarse-to-fine jump proposals.
 
 Cross-cutting conventions:
