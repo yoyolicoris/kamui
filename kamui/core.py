@@ -217,7 +217,7 @@ def _solve_offsets_by_flow(edges: np.ndarray, d: np.ndarray, w: np.ndarray) -> n
     up = d >= 0
     starts, ends = np.where(up, v, u), np.where(up, u, v)
     fixed = np.where(up, w, -w)
-    supply = np.zeros(int(edges.max()) + 1, dtype=np.int64)
+    supply = np.zeros(int(edges.max(initial=-1)) + 1, dtype=np.int64)
     np.add.at(supply, v, fixed)
     np.add.at(supply, u, -fixed)
     graph, order = _sorted_graph(supply.size, starts, ends)
@@ -545,7 +545,7 @@ def calculate_m(
     if not np.issubdtype(differences.dtype, np.integer):
         raise TypeError(f"differences must have an integer dtype; got {differences.dtype}")
     M = edges.shape[0]
-    N = np.max(edges) + 1
+    N = np.max(edges, initial=-1) + 1
     w = np.ones((M,), dtype=np.int64) if weights is None else _edge_weights(weights, M)
     if solver != "highs":
         missing = _lemon_rejects(w)

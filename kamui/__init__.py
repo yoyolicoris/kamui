@@ -20,7 +20,9 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
 import numpy as np
+import scipy.sparse as sp
 from scipy.optimize import OptimizeResult
+from scipy.sparse.csgraph import connected_components
 
 from .core import calculate_k, calculate_m, integrate, puma
 from .utils import (
@@ -84,7 +86,9 @@ def unwrap_dimensional(
     Parameters
     ----------
     x : 2-D or 3-D np.ndarray
-        The phase to be unwrapped.
+        The phase to be unwrapped. NaN pixels are missing data: the edges
+        and cycles that touch them are dropped, and they stay NaN in the
+        result.
     start_pixel : tuple of int, optional
         The reference pixel to start unwrapping.
         Defaults to (0, 0) for 2-D data and (0, 0, 0) for 3-D data.
@@ -138,6 +142,11 @@ def unwrap_dimensional(
     else:
         raise ValueError("x must be 2D or 3D")
     psi = x.ravel()
+    # NaN pixels are missing data: drop every edge and cycle that touches one.
+    # They become isolated vertices, which unwrap_arbitrary returns as given.
+    valid = ~np.isnan(psi)
+    edges = edges[valid[edges].all(axis=1)]
+    simplices = simplices[valid[simplices].all(axis=1)]
 
     if weights is not None:
         # convert per-vertex weights to per-edge weights
@@ -190,7 +199,10 @@ def unwrap_arbitrary(
     period : float, optional
         The period of the phase. Defaults to ``2 * np.pi``.
     start_i : int, optional
-        The index of the reference vertex to start unwrapping. Defaults to 0.
+        The index of the reference vertex to start unwrapping. Each
+        connected component of the graph is unwrapped on its own, referenced
+        to ``start_i`` if it contains it and to its lowest-numbered vertex
+        otherwise. A vertex without edges keeps its value. Defaults to 0.
     return_info : bool, optional
         Also return the solver report. Defaults to False.
     **kwargs
@@ -212,9 +224,18 @@ def unwrap_arbitrary(
         program. For ``method="gc"`` it is the report of
         :func:`kamui.core.puma`, with the final energy as ``fun``.
     """
+    # Reference each connected component to start_i if it holds it, and to its
+    # first vertex otherwise.
+    n = len(psi)
+    adjacency = sp.coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])), shape=(n, n))
+    _, labels = connected_components(adjacency, directed=False)
+    roots = np.unique(labels, return_index=True)[1]
+    roots[labels[start_i]] = start_i
+    ref = roots[labels]
+
     if method == "gc":
         m, info = puma(psi / period, edges, return_info=True, **kwargs)
-        result = (m - m[start_i]) * period + psi
+        result = (m - m[ref]) * period + psi
     elif method == "ilp":
         if simplices is None:
             m, info = calculate_m(
@@ -223,7 +244,12 @@ def unwrap_arbitrary(
                 return_info=True,
                 **kwargs,
             )
-            result = None if m is None else (m - m[start_i]) * period + psi
+            if m is None:
+                result = None
+            else:
+                # calculate_m sizes m by the largest vertex on an edge
+                m = np.pad(m, (0, n - len(m)))
+                result = (m - m[ref]) * period + psi
         else:
             diff = wrap_difference(psi[edges[:, 1]] - psi[edges[:, 0]], period)
             k, info = calculate_k(edges, simplices, diff / period, return_info=True, **kwargs)
@@ -231,13 +257,16 @@ def unwrap_arbitrary(
                 result = None
             else:
                 correct_diff = diff + k * period
+                # A virtual vertex n joins every root by a zero edge, so one
+                # traversal from it covers all components.
+                links = np.stack((np.full_like(roots, n), roots), axis=1)
                 result = (
                     integrate(
-                        np.concatenate((edges, np.flip(edges, 1)), axis=0),
-                        np.concatenate((correct_diff, -correct_diff), axis=0),
-                        start_i=start_i,
-                    )
-                    + psi[start_i]
+                        np.concatenate((edges, np.flip(edges, 1), links), axis=0),
+                        np.concatenate((correct_diff, -correct_diff, np.zeros(len(roots)))),
+                        start_i=n,
+                    )[:n]
+                    + psi[ref]
                 )
     else:
         raise ValueError("method must be 'gc' or 'ilp'")
