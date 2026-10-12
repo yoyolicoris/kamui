@@ -174,24 +174,28 @@ def unwrap_dimensional(
         return (result, info) if return_info else result
 
     valid_flat = valid.ravel()
-    n_valid = int(valid_flat.sum())
-    if n_valid == 0:
+    edge_mask = valid_flat[edges[:, 0]] & valid_flat[edges[:, 1]]
+    valid_edges = edges[edge_mask]
+
+    active_mask = np.zeros(x.size, dtype=bool)
+    active_mask[valid_edges[:, 0]] = True
+    active_mask[valid_edges[:, 1]] = True
+    n_active = int(active_mask.sum())
+    if n_active == 0:
         result = np.full(x.shape, np.nan, dtype=np.float64)
         info = OptimizeResult(
             fun=0.0,
             success=True,
             status=0,
-            message="All pixels are non-finite or NaN.",
+            message="No active pixels to unwrap.",
             ilp_fallback=False,
             solver="none",
         )
         return (result, info) if return_info else result
 
     vertex_map = np.full(x.size, -1, dtype=np.int64)
-    vertex_map[valid_flat] = np.arange(n_valid)
-
-    edge_mask = valid_flat[edges[:, 0]] & valid_flat[edges[:, 1]]
-    sub_edges = vertex_map[edges[edge_mask]]
+    vertex_map[active_mask] = np.arange(n_active)
+    sub_edges = vertex_map[valid_edges]
 
     if weights is not None:
         kwargs["weights"] = _merge_weights(weights, edges, merging_method)[edge_mask]
@@ -199,14 +203,14 @@ def unwrap_dimensional(
     if use_edgelist:
         sub_simplices = None
     else:
-        cycle_mask = np.all(valid_flat[simplices], axis=1)
+        cycle_mask = np.all(active_mask[simplices], axis=1)
         sub_simplices = vertex_map[simplices[cycle_mask]]
 
     sub_start_i = vertex_map[start_i]
     if sub_start_i < 0:
         sub_start_i = 0
 
-    psi = x.ravel()[valid_flat]
+    psi = x.ravel()[active_mask]
     out = unwrap_arbitrary(
         psi,
         sub_edges,
@@ -218,7 +222,7 @@ def unwrap_dimensional(
     result_flat, info = out if return_info else (out, None)
     if result_flat is not None:
         result = np.full(x.shape, np.nan, dtype=np.float64)
-        result.ravel()[valid_flat] = result_flat
+        result.ravel()[active_mask] = result_flat
     else:
         result = None
     return (result, info) if return_info else result

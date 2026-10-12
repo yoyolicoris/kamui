@@ -519,3 +519,19 @@ def test_unwrap_dimensional_nan_failure(monkeypatch):
     x = np.zeros((4, 4))
     x[0, 0] = np.nan
     assert unwrap_dimensional(x) is None
+
+
+def test_unwrap_dimensional_isolated_pixel():
+    x = np.full((3, 3), np.nan)
+    x[1, 1] = 1.0  # isolated finite pixel with degree 0
+    res = unwrap_dimensional(x)
+    assert np.isnan(res).all()
+
+
+def test_unwrap_dimensional_connected_and_isolated_pixel():
+    x = np.full((4, 4), np.nan)
+    x[:2, :2] = 1.0  # 2x2 connected block
+    x[3, 3] = 2.0  # isolated pixel
+    res = unwrap_dimensional(x)
+    assert not np.isnan(res[:2, :2]).any()
+    assert np.isnan(res[3, 3])
