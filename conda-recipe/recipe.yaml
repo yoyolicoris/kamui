@@ -16,8 +16,8 @@
 # conda-forge autotick bot maintains it in the feedstock. Everywhere else the
 # version comes from the git tag via hatch-vcs.
 #
-# python_min comes from conda-forge's global pinning (CFEP-25) and already sits
-# above requires-python, so it is not overridden here.
+# python_min comes from conda-forge's global pinning (CFEP-25). It is 3.11, the
+# same as requires-python, so it is not overridden here.
 #
 # Blocked on pylmcf: kamui requires it, but neither pylmcf nor its
 # nanobind-backend dependency is on conda-forge yet, so both need recipes

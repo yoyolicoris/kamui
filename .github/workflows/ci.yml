@@ -29,7 +29,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        env: [py310, py311, py312, py313, py314]
+        env: [py311, py312, py313, py314]
         # Only this leg uploads coverage. Marked via `include` rather than an
         # `if` on matrix values: if py313 is dropped above, include re-adds it
         # as a leg that fails loudly instead of silently never matching.

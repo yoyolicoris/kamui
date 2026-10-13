@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-The environment is managed by Pixi (`pixi.toml`, `pixi.lock`). The default environment is Python 3.13 plus test and dev tooling. `py310` through `py314` are test-only environments, and CI runs every one of them on Linux, macOS and Windows.
+The environment is managed by Pixi (`pixi.toml`, `pixi.lock`). The default environment is Python 3.13 plus test and dev tooling. `py311` through `py314` are test-only environments, and CI runs every one of them on Linux, macOS and Windows.
 
 ```sh
 pixi run test            # pytest with coverage; fails below 100% (fail_under in pyproject.toml)
@@ -15,7 +15,7 @@ pixi run build           # sdist + wheel
 pixi run smoke           # install the built wheel in an isolated venv and check its version
 pixi run notebook        # execute examples/synthetic_images.ipynb with nbmake (`notebook` env)
 pixi run benchmark       # run examples/benchmark.ipynb and save its outputs (~40 min, not in CI)
-pixi run -e py310 test   # the suite on another interpreter
+pixi run -e py311 test   # the suite on another interpreter
 ```
 
 Run a single test with plain pytest. The `test` task would fail the coverage threshold on a subset.
@@ -67,4 +67,3 @@ Cross-cutting conventions:
 - **Branches:** `dev` is the only long-lived branch. PRs target it, and releases ship from it.
 - **Version:** the version comes from git tags through hatch-vcs, and no file declares it. Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which runs lint, tests, build and smoke, then publishes to PyPI through trusted publishing. Smoke fails if the wheel's version doesn't match the tag.
 - **conda recipe:** `conda-recipe/recipe.yaml` (rattler-build v1 format) carries the only hand-written version.
-- **SciPy pin:** the `py310` environment pins `scipy<1.15`. conda-forge's SciPy 1.15.0–1.15.2 builds run HiGHS hundreds of times slower, which makes the README test effectively hang.
