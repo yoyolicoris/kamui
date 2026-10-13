@@ -53,7 +53,7 @@ spurs = "*"
 
 [feature.notebook.tasks]
 notebook = { cmd = "pytest --nbmake --nbmake-timeout=120 examples/synthetic_images.ipynb", description = "Execute the example notebook to catch API regressions" }
-# Not run in CI: it takes several minutes. --overwrite saves the outputs into the notebook.
+# Not run in CI: it takes about 40 minutes. --overwrite saves the outputs into the notebook.
 benchmark = { cmd = "pytest --nbmake --nbmake-timeout=3600 --overwrite examples/benchmark.ipynb", description = "Run the runtime benchmark notebook and save its results" }
 
 # One feature per supported interpreter, so CI can run the suite across the
