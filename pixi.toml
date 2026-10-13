@@ -34,14 +34,23 @@ python-build = "*"
 numpydoc = ">=1.11.0,<2"
 
 # Executes examples/synthetic_images.ipynb, so the example cannot silently
-# break when the public API changes. matplotlib and scikit-image are test-only:
-# the notebook uses them only to plot and to compare against a reference
-# unwrapper. pytest comes from the `test` feature it is composed with.
+# break when the public API changes. Its dependencies are test-only: matplotlib
+# plots, and scikit-image, SNAPHU and spurs are the unwrappers it compares
+# against. pytest comes from the `test` feature it is composed with.
+# SNAPHU has no Windows build, so neither does this environment.
+[feature.notebook]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+
 [feature.notebook.dependencies]
 matplotlib = "*"
 scikit-image = "*"
+snaphu = "*"
 nbmake = "*"
 ipykernel = "*"
+
+# spurs is only on PyPI.
+[feature.notebook.pypi-dependencies]
+spurs = "*"
 
 [feature.notebook.tasks]
 notebook = { cmd = "pytest --nbmake --nbmake-timeout=120 examples/synthetic_images.ipynb", description = "Execute the example notebook to catch API regressions" }
