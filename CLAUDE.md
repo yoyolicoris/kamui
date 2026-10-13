@@ -13,6 +13,7 @@ pixi run format          # ruff format (format-check is the CI variant)
 pixi run docstrings      # numpydoc validation of the public API in kamui/*.py
 pixi run build           # sdist + wheel
 pixi run smoke           # install the built wheel in an isolated venv and check its version
+pixi run notebook        # execute examples/synthetic_images.ipynb with nbmake (`notebook` env)
 pixi run -e py310 test   # the suite on another interpreter
 ```
 
@@ -55,6 +56,7 @@ Cross-cutting conventions:
 
 - **Coverage:** it must stay at 100%. Mark genuinely unreachable lines with `# pragma: no cover`, and give the reason.
 - **README examples:** `tests/test_readme.py` executes every python block in `README.md`, in order and in one shared namespace. README examples must run as written and must not reuse variable names in ways that break later blocks.
+- **Example notebook:** CI executes `examples/synthetic_images.ipynb` in the `notebook` environment, which adds matplotlib and scikit-image as test-only dependencies. Its last cell asserts that the noiseless examples unwrap exactly. Commit it with outputs from a stock `python3` kernelspec; it seeds its noise, so re-running it changes nothing but timings.
 - **Docstrings:** public functions need numpydoc docstrings that pass `pixi run docstrings`. Ruff's `D` rules use the numpy convention, and tests are exempt.
 - **Math on GitHub:** in the README, PRs and issues, write inline math as $`...`$ and display math as `math` fenced blocks. GitHub's renderer rejects `\operatorname`; use `\text{round}` and the like instead.
 

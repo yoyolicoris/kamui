@@ -33,6 +33,19 @@ ruff = "*"
 python-build = "*"
 numpydoc = ">=1.11.0,<2"
 
+# Executes examples/synthetic_images.ipynb, so the example cannot silently
+# break when the public API changes. matplotlib and scikit-image are test-only:
+# the notebook uses them only to plot and to compare against a reference
+# unwrapper. pytest comes from the `test` feature it is composed with.
+[feature.notebook.dependencies]
+matplotlib = "*"
+scikit-image = "*"
+nbmake = "*"
+ipykernel = "*"
+
+[feature.notebook.tasks]
+notebook = { cmd = "pytest --nbmake --nbmake-timeout=120 examples/synthetic_images.ipynb", description = "Execute the example notebook to catch API regressions" }
+
 # One feature per supported interpreter, so CI can run the suite across the
 # whole `requires-python` range instead of whatever the solver happens to pick.
 [feature.py310.dependencies]
@@ -64,6 +77,7 @@ py311 = ["py311", "test"]
 py312 = ["py312", "test"]
 py313 = ["py313", "test"]
 py314 = ["py314", "test"]
+notebook = ["py313", "test", "notebook"]
 
 [tasks]
 test = { cmd = "pytest -v --cov --cov-branch --cov-report=term-missing --cov-report=xml", description = "Run the test suite, enforce full coverage, and write coverage.xml" }
