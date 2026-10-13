@@ -246,6 +246,7 @@ If unwrapping is unexpectedly slow, check your SciPy build. On macOS (Apple Sili
 ## Examples
 
 - [Unwrapping on 2-D synthetic data](https://github.com/yoyolicoris/kamui/blob/dev/examples/synthetic_images.ipynb)
+- [Runtime benchmark on a synthetic InSAR earthquake](https://github.com/yoyolicoris/kamui/blob/dev/examples/benchmark.ipynb)
 
 ## Roadmap
 
