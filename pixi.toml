@@ -6,7 +6,7 @@ channels = ["conda-forge"]
 platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
 
 [dependencies]
-python = ">=3.10,<3.15"
+python = ">=3.11,<3.15"
 pip = "*"
 numpy = ">=2"
 scipy = "*"
@@ -14,9 +14,8 @@ scipy = "*"
 [pypi-dependencies]
 kamui = { path = ".", editable = true }
 
-# Split from `dev` so the per-Python environments below can carry the test
-# runner without the tooling: numpydoc >=1.11 requires Python >=3.11, which
-# would make a 3.10 environment unsolvable.
+# Split from `dev` so the per-Python environments below carry only the test
+# runner, not the tooling.
 [feature.test.dependencies]
 pytest = "*"
 pytest-cov = ">=7.1.0, <8"
@@ -33,16 +32,32 @@ ruff = "*"
 python-build = "*"
 numpydoc = ">=1.11.0,<2"
 
+# Executes examples/synthetic_images.ipynb, so the example cannot silently
+# break when the public API changes. Its dependencies are test-only: matplotlib
+# plots, and scikit-image, SNAPHU and spurs are the unwrappers it compares
+# against. pytest comes from the `test` feature it is composed with.
+# SNAPHU has no Windows build, so neither does this environment.
+[feature.notebook]
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+
+[feature.notebook.dependencies]
+matplotlib = "*"
+scikit-image = "*"
+snaphu = "*"
+nbmake = "*"
+ipykernel = "*"
+
+# spurs is only on PyPI.
+[feature.notebook.pypi-dependencies]
+spurs = "*"
+
+[feature.notebook.tasks]
+notebook = { cmd = "pytest --nbmake --nbmake-timeout=120 examples/synthetic_images.ipynb", description = "Execute the example notebook to catch API regressions" }
+# Not run in CI: it takes about 40 minutes. --overwrite saves the outputs into the notebook.
+benchmark = { cmd = "pytest --nbmake --nbmake-timeout=3600 --overwrite examples/benchmark.ipynb", description = "Run the runtime benchmark notebook and save its results" }
+
 # One feature per supported interpreter, so CI can run the suite across the
 # whole `requires-python` range instead of whatever the solver happens to pick.
-[feature.py310.dependencies]
-python = "3.10.*"
-# conda-forge's only SciPy 1.15 builds (1.15.0-1.15.2) run HiGHS hundreds of
-# times slower on kamui's programs: about 5 s for a 32x32 grid, against 10 ms
-# for the PyPI wheels and for other conda-forge releases (measured on
-# osx-arm64). The README examples would take hours there, so stay on 1.14.
-scipy = "<1.15"
-
 [feature.py311.dependencies]
 python = "3.11.*"
 
@@ -59,11 +74,11 @@ python = "3.14.*"
 # Pinned to the newest Python with PyMaxflow wheels, so the lint, build and
 # release jobs never compile it; py314 below covers 3.14.
 default = ["py313", "test", "dev"]
-py310 = ["py310", "test"]
 py311 = ["py311", "test"]
 py312 = ["py312", "test"]
 py313 = ["py313", "test"]
 py314 = ["py314", "test"]
+notebook = ["py313", "test", "notebook"]
 
 [tasks]
 test = { cmd = "pytest -v --cov --cov-branch --cov-report=term-missing --cov-report=xml", description = "Run the test suite, enforce full coverage, and write coverage.xml" }

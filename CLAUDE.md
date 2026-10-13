@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-The environment is managed by Pixi (`pixi.toml`, `pixi.lock`). The default environment is Python 3.13 plus test and dev tooling. `py310` through `py314` are test-only environments, and CI runs every one of them on Linux, macOS and Windows.
+The environment is managed by Pixi (`pixi.toml`, `pixi.lock`). The default environment is Python 3.13 plus test and dev tooling. `py311` through `py314` are test-only environments, and CI runs every one of them on Linux, macOS and Windows.
 
 ```sh
 pixi run test            # pytest with coverage; fails below 100% (fail_under in pyproject.toml)
@@ -13,7 +13,9 @@ pixi run format          # ruff format (format-check is the CI variant)
 pixi run docstrings      # numpydoc validation of the public API in kamui/*.py
 pixi run build           # sdist + wheel
 pixi run smoke           # install the built wheel in an isolated venv and check its version
-pixi run -e py310 test   # the suite on another interpreter
+pixi run notebook        # execute examples/synthetic_images.ipynb with nbmake (`notebook` env)
+pixi run benchmark       # run examples/benchmark.ipynb and save its outputs (~40 min, not in CI)
+pixi run -e py311 test   # the suite on another interpreter
 ```
 
 Run a single test with plain pytest. The `test` task would fail the coverage threshold on a subset.
@@ -55,6 +57,8 @@ Cross-cutting conventions:
 
 - **Coverage:** it must stay at 100%. Mark genuinely unreachable lines with `# pragma: no cover`, and give the reason.
 - **README examples:** `tests/test_readme.py` executes every python block in `README.md`, in order and in one shared namespace. README examples must run as written and must not reuse variable names in ways that break later blocks.
+- **Example notebook:** CI executes `examples/synthetic_images.ipynb` in the `notebook` environment, which adds matplotlib, scikit-image, SNAPHU (`snaphu`, snaphu-py) and spurs (PyPI only) as test-only dependencies. SNAPHU has no Windows build, so that environment covers Linux and macOS only. The notebook compares Kamui LEMON and PUMA with skimage, SNAPHU and spurs, on clean and noisy versions of each example, in two-column grayscale figures: each result beside its wrong pixels, with each method's runtime printed below. `compare` runs, times and plots the methods; end a cell's bare `compare(...)` with `;` so its returned results are not echoed. Keep its style: each section gets a header and a sentence or two on what the example is (and, in the intro, how to read the figures), with other notes as code comments. Don't interpret the results; readers do that from the figures. Its last cell asserts what the figures show: the noiseless and NaN-masked examples unwrap exactly, only Kamui LEMON recovers the shear, Kamui LEMON misplaces the fewest pixels on the noisy Gaussian and the InSAR earthquake, weights help, and integer weights reach LEMON. In the InSAR example, every method gets the same interferogram with no NaN, so solvers without masking are not handicapped. SNAPHU gets the interferogram's real number of looks (`nlooks=9`) and `cost="defo"`, its documented mode for deformation; with `nlooks=1` it misplaced more than twice as many pixels, so keep its settings matched to the data. Commit it with outputs from a stock `python3` kernelspec; it seeds its noise, so re-running it changes nothing but timings. skimage's `unwrap_phase` hangs on NaN input, even under a mask, so don't pass it the NaN example.
+- **Benchmark notebook:** `examples/benchmark.ipynb` times the same unwrappers on the InSAR earthquake from the example notebook at 128² to 2048², with the scene scaled self-similarly (rupture length, depth, width and slip ∝ N, atmosphere amplitude ∝ N^(1/3)). It copies the example notebook's helpers instead of importing them, so keep the two in step. A method slower than `TIME_BUDGET` at one size skips the larger ones. CI does not run it; rerun `pixi run benchmark` and commit the outputs when a solver's speed changes.
 - **Docstrings:** public functions need numpydoc docstrings that pass `pixi run docstrings`. Ruff's `D` rules use the numpy convention, and tests are exempt.
 - **Math on GitHub:** in the README, PRs and issues, write inline math as $`...`$ and display math as `math` fenced blocks. GitHub's renderer rejects `\operatorname`; use `\text{round}` and the like instead.
 
@@ -63,4 +67,3 @@ Cross-cutting conventions:
 - **Branches:** `dev` is the only long-lived branch. PRs target it, and releases ship from it.
 - **Version:** the version comes from git tags through hatch-vcs, and no file declares it. Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which runs lint, tests, build and smoke, then publishes to PyPI through trusted publishing. Smoke fails if the wheel's version doesn't match the tag.
 - **conda recipe:** `conda-recipe/recipe.yaml` (rattler-build v1 format) carries the only hand-written version.
-- **SciPy pin:** the `py310` environment pins `scipy<1.15`. conda-forge's SciPy 1.15.0–1.15.2 builds run HiGHS hundreds of times slower, which makes the README test effectively hang.
